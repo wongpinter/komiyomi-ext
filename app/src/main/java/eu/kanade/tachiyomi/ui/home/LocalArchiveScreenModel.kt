@@ -14,6 +14,7 @@ import exh.log.xLogE
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -81,9 +82,6 @@ class LocalArchiveScreenModel(
         recursive = recursive,
     )
     private val coverSlots = Semaphore(2)
-    // KMK -->
-    private val metadataSlots = Semaphore(2)
-    // KMK <--
     private val coverLocks = ConcurrentHashMap<String, Mutex>()
     private var scanJob: Job? = null
     private var progressJob: Job? = null
@@ -241,39 +239,36 @@ class LocalArchiveScreenModel(
 
         val missing = archives.filter { it.identity !in cached }
         val processed = AtomicInteger()
-        coroutineScope {
-            missing.map { entry ->
+        missing.chunked(METADATA_CONCURRENCY).forEach { batch ->
+            batch.map { entry ->
                 async {
-                    metadataSlots.withPermit {
-                        result[entry.identity] = readComicInfo(entry)
-                        val done = processed.incrementAndGet()
-                        if (done % 20 == 0 || done == missing.size) {
-                            mutableState.update { it.copy(metadataProcessed = done) }
-                        }
+                    result[entry.identity] = readComicInfo(entry)
+                    val done = processed.incrementAndGet()
+                    if (done % 20 == 0 || done == missing.size) {
+                        mutableState.update { it.copy(metadataProcessed = done) }
                     }
                 }
-            }.forEach { it.await() }
+            }.awaitAll()
         }
 
         val sameSizeCandidates = archives.groupBy { it.size }
             .filter { (size, copies) -> size > 0 && copies.size > 1 }
             .values
             .flatten()
-        mutableState.update { it.copy(metadataTotal = missing.size + sameSizeCandidates.size) }
+        val hashCandidates = sameSizeCandidates.filter { result[it.identity]?.contentHash == null }
+        mutableState.update { it.copy(metadataTotal = missing.size + hashCandidates.size) }
         val hashProgress = AtomicInteger()
-        coroutineScope {
-            sameSizeCandidates.filter { result[it.identity]?.contentHash == null }.map { entry ->
+        hashCandidates.chunked(METADATA_CONCURRENCY).forEach { batch ->
+            batch.map { entry ->
                 async {
-                    metadataSlots.withPermit {
-                        val hash = hashArchive(entry)
-                        if (hash != null) result[entry.identity] = result.getValue(entry.identity).copy(contentHash = hash)
-                        val done = hashProgress.incrementAndGet()
-                        if (done % 10 == 0 || done == sameSizeCandidates.size) {
-                            mutableState.update { it.copy(metadataProcessed = missing.size + done) }
-                        }
+                    val hash = hashArchive(entry)
+                    if (hash != null) result[entry.identity] = result.getValue(entry.identity).copy(contentHash = hash)
+                    val done = hashProgress.incrementAndGet()
+                    if (done % 10 == 0 || done == hashCandidates.size) {
+                        mutableState.update { it.copy(metadataProcessed = missing.size + done) }
                     }
                 }
-            }.forEach { it.await() }
+            }.awaitAll()
         }
         result.toMap()
     }
@@ -438,8 +433,7 @@ class LocalArchiveScreenModel(
                     }.ifEmpty { listOf(entry) }
                     // KMK -->
                     val parentPaths = entries.map { it.parentPath }.distinct()
-                    val syntheticSeries = parentPaths.size > 1 ||
-                        (seriesKey?.startsWith("comicinfo:") == true && parentPaths.singleOrNull().orEmpty().isEmpty() && entries.size > 1)
+                    val syntheticSeries = parentPaths.size > 1 || seriesKey?.startsWith("comicinfo:") == true
                     val mangaPath = when {
                         syntheticSeries -> "offline-series:${seriesKey.orEmpty()}"
                         parentPaths.singleOrNull().orEmpty().isNotEmpty() -> parentPaths.single()
@@ -542,6 +536,7 @@ class LocalArchiveScreenModel(
         // KMK -->
         const val MAX_COMIC_INFO_BYTES = 1024L * 1024
         const val MAX_METADATA_FIELD_LENGTH = 2048
+        const val METADATA_CONCURRENCY = 2
         // KMK <--
     }
 }

@@ -213,13 +213,17 @@ internal class HttpPageLoader(
         try {
             if (page.imageUrl.isNullOrEmpty()) {
                 page.status = Page.State.LoadPage
+                // KMK -->
                 page.imageUrl = retryNetworkRequest { source.getImageUrl(page) }
+                // KMK <--
             }
             val imageUrl = page.imageUrl!!
 
             if (!chapterCache.isImageInCache(imageUrl)) {
                 page.status = Page.State.DownloadImage
+                // KMK -->
                 val imageResponse = retryNetworkRequest { source.getImage(page, dataSaver) }
+                // KMK <--
                 chapterCache.putImageToCache(imageUrl, imageResponse)
             }
 

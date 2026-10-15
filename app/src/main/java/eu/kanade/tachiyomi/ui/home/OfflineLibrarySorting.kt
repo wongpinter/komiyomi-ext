@@ -100,7 +100,7 @@ internal fun offlineSeriesKey(
 ): String? {
     val seriesName = metadata[entry.identity]?.series.cleanMetadata()
     return when {
-        seriesName != null -> "comicinfo:${seriesName.normalizedSeriesName()}"
+        seriesName != null -> "comicinfo:${seriesName.normalizedSeriesName()}:${entry.parentPath}"
         entry.parentPath.isNotEmpty() -> "folder:${entry.parentPath}"
         else -> null
     }
