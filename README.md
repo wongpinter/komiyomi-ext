@@ -12,7 +12,7 @@
 [![License: Apache-2.0](https://img.shields.io/github/license/wongpinter/komiyomi-ext?labelColor=27303D&color=0877d2)](/LICENSE)
 
 <div align="left">
-Komiyomi Ext is an independent, open-source manga reader based on Komikku, Mihon, and TachiyomiSY. It is the extension-enabled companion to Komiyomi, the standalone CBZ/CBR reader. This fork adds features for online sources and offline reading while preserving attribution to its upstream projects.
+Komiyomi Ext is an independently maintained, open-source manga reader descended from Komikku, Mihon, and TachiyomiSY. It is the extension-enabled companion to Komiyomi, the standalone CBZ/CBR reader. Komiyomi Ext is not synchronized with the Komikku repository; its code history and attribution remain documented here.
 
 ![screenshots of app](./.github/readme-images/screens.png)
 
@@ -53,7 +53,7 @@ Komiyomi Ext is an independent, open-source manga reader based on Komikku, Mihon
 - In-app progress banner shows Library syncing / Backup restoring / Library updating progress.
 - Auto-install app update.
 - Configurable interval to refresh entries from downloaded storage.
-- Includes features from Mihon and TachiyomiSY, with compatible upstream updates brought in over time.
+- Maintained as its own project, with independent releases and change history.
 - More app themes & better UI, improvements...
 
 ### Set up a local CBZ/CBR library
@@ -171,11 +171,11 @@ See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
 
 <div align="center">
 
-### Upstream credits
+### Code lineage and credits
 
-Komiyomi Ext builds on the work of Komikku, Mihon, TachiyomiSY, and their contributors. Their names identify the upstream projects and do not imply affiliation.
+Komiyomi Ext retains code and contributions from Komikku, Mihon, TachiyomiSY, and their contributors. These references document the project's history and do not imply affiliation or ongoing synchronization.
 
-See the [Komikku contributor history](https://github.com/komikku-app/komikku/graphs/contributors) and the upstream credits in the app's About section.
+See the [Komikku contributor history](https://github.com/komikku-app/komikku/graphs/contributors), the [Mihon contributors](https://github.com/mihonapp/mihon/graphs/contributors), the [TachiyomiSY contributors](https://github.com/jobobby04/TachiyomiSY/graphs/contributors), and the credits in the app's About section.
 
 ### Disclaimer
 

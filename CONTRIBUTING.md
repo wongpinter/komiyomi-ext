@@ -26,16 +26,16 @@ Before you start, please note that the ability to use following technologies is 
 
 ## Getting help
 
-- Join [the Discord server](https://discord.gg/85jB7V5AJR) for online help and to ask questions while developing.
+- For Komiyomi Ext questions, use the [project issue tracker](https://github.com/wongpinter/komiyomi-ext/issues).
 
 # Translations
 
-Komiyomi Ext-only strings are maintained in `i18n-kmk/src/commonMain/moko-resources/base/strings.xml`. Upstream translations remain credited to Komikku and are not edited in this repository.
+Komiyomi Ext-only strings are maintained in `i18n-kmk/src/commonMain/moko-resources/base/strings.xml`. Some translations originated with Komikku and retain their attribution; translation changes are maintained in this repository and are not synced from Komikku.
 
 
 # Forks
 
-Komiyomi Ext is an independent fork of Komikku, Mihon, and TachiyomiSY. Contributions must follow this repository's Apache-2.0 license and retain relevant upstream notices.
+Komiyomi Ext is independently maintained and is not synchronized with the Komikku repository. Its code history includes work from Komikku, Mihon, and TachiyomiSY. Contributions must follow this repository's Apache-2.0 license and retain relevant notices.
 
 When creating a fork, remember to:
 

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❌ Help with Extensions
-    url: https://komikku-app.github.io/docs/faq/browse/extensions
-    about: For extension-related questions/issues
-  - name: 🖥️ Komikku website
-    url: https://komikku-app.github.io/
-    about: Guides, troubleshooting, and answers to common questions
+  - name: 📚 Komiyomi Ext README
+    url: https://github.com/wongpinter/komiyomi-ext#features
+    about: Features and local CBZ/CBR library setup
+  - name: ⬇️ Komiyomi Ext releases
+    url: https://github.com/wongpinter/komiyomi-ext/releases
+    about: Download the latest release

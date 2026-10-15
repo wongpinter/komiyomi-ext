@@ -1,5 +1,5 @@
 name: 🐞 Issue report
-description: Report an issue in Komikku
+description: Report an issue in Komiyomi Ext
 labels: [bug]
 body:
   - type: textarea
@@ -47,10 +47,10 @@ body:
         You can upload the crash log file as an attachment, or paste the crash logs in plain text if needed.
 
   - type: input
-    id: komikku-version
+    id: komiyomi-ext-version
     attributes:
-      label: Komikku version
-      description: You can find your Komikku version in **More → About**.
+      label: Komiyomi Ext version
+      description: You can find your Komiyomi Ext version in **More → About**.
       placeholder: |
         Example: "1.3.1"
     validations:
@@ -93,13 +93,13 @@ body:
           required: true
         - label: I have written a short but informative title.
           required: true
-        - label: I have gone through the [FAQ](https://komikku-app.github.io/docs/faq/general) and [troubleshooting guide](https://komikku-app.github.io/docs/guides/troubleshooting/).
+        - label: I have read the [Komiyomi Ext README](https://github.com/wongpinter/komiyomi-ext#features) and checked whether this is expected behavior.
           required: true
-        - label: I have updated the app to version **[latest](https://github.com/komikku-app/komikku/releases/latest)**.
+        - label: I have updated the app to the [latest Komiyomi Ext release](https://github.com/wongpinter/komiyomi-ext/releases/latest).
           required: true
         - label: I have filled out all of the requested information in this form, including specific version numbers.
           required: true
-        - label: I understand that **Komikku does not have or fix any extensions**, and I **will not receive help** for any issues related to sources or extensions.
+        - label: If this concerns a source extension, I have included its name, version, and source URL; I understand extensions are maintained separately from Komiyomi Ext.
           required: true
 
   - type: "textarea"
@@ -115,4 +115,4 @@ body:
         Add a :+1: [reaction] to [issues you find important].
 
         [reaction]: https://github.blog/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/
-        [issues you find important]: https://github.com/komikku-app/komikku/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc
+        [issues you find important]: https://github.com/wongpinter/komiyomi-ext/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc
