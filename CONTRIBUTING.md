@@ -1,15 +1,15 @@
-Looking to report an issue/bug or make a feature request? Please refer to the [README file](https://github.com/komikku-app/komikku#issues-feature-requests-and-contributing).
+Looking to report an issue or request a feature? Use [Komiyomi Ext's issue tracker](https://github.com/wongpinter/komiyomi-ext/issues).
 
 ---
 
-Thanks for your interest in contributing to Komikku!
+Thanks for your interest in contributing to Komiyomi Ext!
 
 
 # Code contributions
 
 Pull requests are welcome!
 
-If you're interested in taking on [an open issue](https://github.com/komikku-app/komikku/issues), please comment on it so others are aware.
+If you're interested in taking on [an open issue](https://github.com/wongpinter/komiyomi-ext/issues), please comment on it so others are aware.
 You do not need to ask for permission nor an assignment.
 
 ## Prerequisites
@@ -30,24 +30,19 @@ Before you start, please note that the ability to use following technologies is 
 
 # Translations
 
-Translations are done externally via [Weblate](https://hosted.weblate.org/engage/komikku-app/). See [our website](https://komikku-app.github.io/docs/contribute#translation) for more details.
+Komiyomi Ext-only strings are maintained in `i18n-kmk/src/commonMain/moko-resources/base/strings.xml`. Upstream translations remain credited to Komikku and are not edited in this repository.
 
 
 # Forks
 
-Forks are allowed so long as they abide by [the project's LICENSE](https://github.com/komikku-app/komikku/blob/master/LICENSE).
+Komiyomi Ext is an independent fork of Komikku, Mihon, and TachiyomiSY. Contributions must follow this repository's Apache-2.0 license and retain relevant upstream notices.
 
 When creating a fork, remember to:
 
-- To avoid confusion with the main app:
-    - Change the app name
-    - Change the app icon
-    - Change or disable the [app update checker](https://github.com/komikku-app/komikku/blob/master/app/src/main/java/eu/kanade/tachiyomi/data/updater/AppUpdateChecker.kt)
-- To avoid installation conflicts:
-    - Change the `applicationId` in [`build.gradle.kts`](https://github.com/komikku-app/komikku/blob/master/app/build.gradle.kts)
-- To avoid having your data polluting the main app's analytics and crash report services:
-    - If you want to use Firebase analytics, replace [`google-services.json`](https://github.com/komikku-app/komikku/blob/master/app/src/standard/google-services.json) with your own
-    - If you want to use ACRA crash reporting, replace the `ACRA_URI` endpoint in [`build.gradle.kts`](https://github.com/komikku-app/komikku/blob/master/app/build.gradle.kts) with your own
+- The app is branded **Komiyomi Ext** to distinguish it from the standalone **Komiyomi** CBZ/CBR reader.
+- The application ID remains `app.komikku` so compatible existing installs can upgrade and retain app data. Changing it creates a separate Android app identity.
+- The update checker targets the Komiyomi Ext repository. Keep it pointed at this project when changing release workflows.
+- Keep telemetry and crash-reporting endpoints project-owned; do not send Komiyomi Ext data to upstream services.
 
 
 ### Supporting Cloud Sync - Google Drive Implementation

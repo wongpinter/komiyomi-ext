@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.data.connections.ConnectionsManager
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -149,7 +150,9 @@ class DiscordRPCService : Service() {
         val builder = context.notificationBuilder(Notifications.CHANNEL_DISCORD_RPC) {
             setSmallIcon(R.drawable.ic_discord_24dp)
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
-            setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.komikku))
+            // KMK -->
+            setLargeIcon(context.komiyomiExtIconBitmap())
+            // KMK <--
             setContentText(context.getString(R.string.pref_discord_rpc))
             // KMK -->
             setContentTitle(context.getString(R.string.app_name))
@@ -364,7 +367,9 @@ class DiscordRPCService : Service() {
                             context.getString(discordScreen.details),
                             title ?: context.getString(discordScreen.text),
                         ),
-                        smallText = context.getString(R.string.discord_app_description),
+                        // KMK -->
+                        smallText = context.getString(R.string.komiyomi_ext_app_description),
+                        // KMK <--
                     ),
                     buttons = buttonLabels.takeIf { it.isNotEmpty() },
                     metadata = metadata,

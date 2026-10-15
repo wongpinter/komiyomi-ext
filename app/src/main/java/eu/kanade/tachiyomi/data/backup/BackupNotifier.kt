@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.cancelNotification
+import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import tachiyomi.core.common.i18n.pluralStringResource
@@ -35,9 +36,13 @@ class BackupNotifier(private val context: Context) {
     private val progressNotificationBuilder = context.notificationBuilder(
         Notifications.CHANNEL_BACKUP_RESTORE_PROGRESS,
     ) {
-        setSmallIcon(R.drawable.ic_komikku)
+        // KMK -->
+        setSmallIcon(R.drawable.ic_komiyomi_ext_monochrome)
+        // KMK <--
         setColor(ContextCompat.getColor(context, R.color.ic_launcher))
-        setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.komikku))
+        // KMK -->
+        setLargeIcon(context.komiyomiExtIconBitmap())
+        // KMK <--
         setAutoCancel(false)
         setOngoing(true)
         setOnlyAlertOnce(true)
@@ -46,9 +51,13 @@ class BackupNotifier(private val context: Context) {
     private val completeNotificationBuilder = context.notificationBuilder(
         Notifications.CHANNEL_BACKUP_RESTORE_COMPLETE,
     ) {
-        setSmallIcon(R.drawable.ic_komikku)
+        // KMK -->
+        setSmallIcon(R.drawable.ic_komiyomi_ext_monochrome)
+        // KMK <--
         setColor(ContextCompat.getColor(context, R.color.ic_launcher))
-        setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.komikku))
+        // KMK -->
+        setLargeIcon(context.komiyomiExtIconBitmap())
+        // KMK <--
         setAutoCancel(false)
     }
 

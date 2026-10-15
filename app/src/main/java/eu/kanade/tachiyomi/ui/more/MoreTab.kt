@@ -55,7 +55,9 @@ data object MoreTab : Tab {
             val isSelected = LocalTabNavigator.current.current.key == key
             val image = AnimatedImageVector.animatedVectorResource(R.drawable.anim_more_enter)
             return TabOptions(
+                // KMK -->
                 index = 4u,
+                // KMK <--
                 title = stringResource(MR.strings.label_more),
                 icon = rememberAnimatedVectorPainter(image, isSelected),
             )
@@ -79,7 +81,9 @@ data object MoreTab : Tab {
             onIncognitoModeChange = { screenModel.incognitoMode = it },
             // SY -->
             showNavUpdates = screenModel.showNavUpdates,
-            showNavHistory = screenModel.showNavHistory,
+            // KMK -->
+            showNavHistory = false,
+            // KMK <--
             // SY <--
             onClickDownloadQueue = { navigator.push(DownloadQueueScreen) },
             onClickCategories = { navigator.push(CategoryScreen()) },
@@ -120,7 +124,9 @@ private class MoreScreenModel(
 
     // SY -->
     val showNavUpdates by uiPreferences.showNavUpdates().asState(screenModelScope)
-    val showNavHistory by uiPreferences.showNavHistory().asState(screenModelScope)
+    // KMK -->
+    // History is now always reachable from More because it no longer has a bottom navigation item.
+    // KMK <--
     // SY <--
 
     private var _downloadQueueState: MutableStateFlow<DownloadQueueState> = MutableStateFlow(DownloadQueueState.Stopped)

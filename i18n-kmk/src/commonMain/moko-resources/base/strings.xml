@@ -171,6 +171,74 @@
     <string name="related_mangas_more">More like these...</string>
     <string name="saved_searches_add_feed">Saved Searches (Hold to add to Feed)</string>
     <string name="saved_searches_delete">Saved Searches (Hold to delete)</string>
+    <!-- KMK -->
+    <!-- Offline archives -->
+    <string name="komiyomi_ext_app_name" translatable="false">Komiyomi Ext</string>
+    <string name="komiyomi_ext_app_description" translatable="false">Komiyomi Ext - a manga reader app</string>
+    <string name="upstream_website">Upstream website</string>
+    <string name="upstream_community">Upstream community</string>
+    <string name="upstream_privacy_policy">Upstream privacy policy</string>
+    <string name="offline_choose_folder">Choose local folder</string>
+    <string name="offline_rescan">Rescan folder</string>
+    <string name="offline_scan_progress">Scanning %1$d folders · %2$d archives</string>
+    <string name="offline_entry_count">%1$d archives · %2$d folders</string>
+    <string name="offline_unreadable_folders">%1$d folders could not be read</string>
+    <string name="offline_open_failed">Could not open this archive</string>
+    <string name="offline_folder_unavailable">The local folder is unavailable</string>
+    <string name="offline_no_filter_matches">No archives match these filters</string>
+    <string name="offline_folder_empty">No archives or folders found</string>
+    <string name="offline_library_tab">Local</string>
+    <string name="offline_folders_tab">Folders</string>
+    <string name="pref_local_source_location">Local manga folder</string>
+    <string name="pref_local_source_location_default">Default: storage location/local</string>
+    <string name="pref_local_source_location_unavailable">Selected folder is unavailable</string>
+    <string name="pref_local_source_location_info">Choose the folder that already contains your CBZ/CBR files. Files stay in place.</string>
+    <string name="action_reset_local_source_location">Use default Local folder</string>
+    <string name="offline_add_favorite">Add to favorites</string>
+    <string name="offline_remove_favorite">Remove from favorites</string>
+    <string name="offline_status_all">All</string>
+    <string name="offline_status_unread">Unread</string>
+    <string name="offline_status_reading">Reading</string>
+    <string name="offline_status_completed">Completed</string>
+    <string name="offline_read_percent">%1$d%% read</string>
+    <string name="offline_page_number">Page %1$d</string>
+    <string name="offline_continue_reading">Continue reading</string>
+    <string name="offline_favorites">Favorites</string>
+    <string name="offline_grid_view">Grid view</string>
+    <string name="offline_list_view">List view</string>
+    <string name="offline_cover_size">Cover size</string>
+    <string name="offline_covers_small">Small covers</string>
+    <string name="offline_covers_medium">Medium covers</string>
+    <string name="offline_covers_large">Large covers</string>
+    <string name="offline_sort_by">Sort by %1$s</string>
+    <string name="offline_sort_descending">Descending</string>
+    <string name="offline_sort_ascending">Ascending</string>
+    <string name="offline_sort_title">Title</string>
+    <string name="offline_sort_folder">Folder</string>
+    <string name="offline_sort_modified">Date modified</string>
+    <string name="offline_sort_size">File size</string>
+    <string name="offline_bookmark_page">Bookmark page</string>
+    <string name="offline_remove_page_bookmark">Remove page bookmark</string>
+    <string name="offline_page_bookmark_count">%1$d page bookmarks</string>
+    <string name="offline_page_bookmarks">Page bookmarks</string>
+    <string name="offline_no_page_bookmarks">No page bookmarks</string>
+    <!-- Offline downloads -->
+    <string name="download_save_to_local_archive">Save downloaded chapters to Local</string>
+    <string name="download_save_to_local_archive_summary">Also save each chapter as a CBZ in Local, grouped by manga and source. This uses additional storage.</string>
+    <string name="download_concurrent_chapters">Concurrent chapter downloads</string>
+    <string name="download_concurrent_chapters_summary">Maximum chapters downloading at once; the page limit applies to each chapter.</string>
+    <string name="download_all_chapters">Download all chapters</string>
+    <!-- Archive reader -->
+    <string name="archive_root_pages">Root pages</string>
+    <string name="archive_chapters">Chapters</string>
+    <string name="archive_go_to_page">Go to page</string>
+    <string name="archive_section_position">%1$d / %2$d</string>
+    <string name="archive_total_position">Page %1$d of %2$d</string>
+    <string name="archive_find_chapter">Find chapter</string>
+    <string name="archive_page_range">Pages %1$d–%2$d</string>
+    <string name="archive_no_chapters_found">No chapters found</string>
+    <string name="archive_page_number">Page number</string>
+    <!-- KMK END -->
     <!-- Error Screen -->
     <string name="option_label_library_update_errors">Library update errors</string>
     <string name="label_library_update_errors">Library update errors (%d)</string>
@@ -223,7 +291,7 @@
     <string name="discord_status_scrolling">Scrolling through</string>
     <string name="discord_status_messing">Messing around with</string>
     <string name="discord_download_button">Read on %s</string>
-    <string name="discord_app_description">Komikku - a manga reader app</string>
+    <string name="discord_app_description">Komiyomi Ext - a manga reader app</string>
     <!-- Discord RPC Customization -->
     <string name="pref_category_discord_customization">Discord Customization</string>
     <string name="pref_discord_custom_message">Custom Message</string>

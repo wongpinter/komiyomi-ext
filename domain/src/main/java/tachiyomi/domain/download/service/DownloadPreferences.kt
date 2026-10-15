@@ -13,6 +13,11 @@ class DownloadPreferences(
 
     fun saveChaptersAsCBZ() = preferenceStore.getBoolean("save_chapter_as_cbz", true)
 
+    // KMK -->
+    fun saveDownloadedChaptersToLocalArchive() =
+        preferenceStore.getBoolean("save_downloaded_chapters_to_local_archive", false)
+    // KMK <--
+
     fun splitTallImages() = preferenceStore.getBoolean("split_tall_images", true)
 
     fun autoDownloadWhileReading() = preferenceStore.getInt("auto_download_while_reading", 0)
@@ -38,6 +43,10 @@ class DownloadPreferences(
     fun downloadNewUnreadChaptersOnly() = preferenceStore.getBoolean("download_new_unread_chapters_only", false)
 
     fun parallelSourceLimit() = preferenceStore.getInt("download_parallel_source_limit", 5)
+
+    // KMK -->
+    fun parallelChapterLimit() = preferenceStore.getInt("download_parallel_chapter_limit", 5)
+    // KMK <--
 
     fun parallelPageLimit() = preferenceStore.getInt("download_parallel_page_limit", 5)
 

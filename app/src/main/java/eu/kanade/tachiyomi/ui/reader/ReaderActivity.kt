@@ -91,6 +91,7 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.AddToLibraryFirst
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Error
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Success
+import eu.kanade.tachiyomi.ui.reader.loader.ArchivePageLoader
 import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -128,6 +129,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import logcat.LogPriority
+import mihon.core.archive.ArchiveSection
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
@@ -648,6 +650,18 @@ class ReaderActivity : BaseActivity() {
 
         val isHttpSource = viewModel.getSource() is HttpSource
 
+        // KMK -->
+        val currentChapter = state.currentChapter
+        val archivePagePaths = currentChapter?.pages?.map { it.url }.orEmpty()
+        val archiveSections = remember(currentChapter?.chapter?.id, archivePagePaths) {
+            if (currentChapter?.pageLoader is ArchivePageLoader) {
+                ArchiveSection.fromPagePaths(archivePagePaths)
+            } else {
+                emptyList()
+            }
+        }
+        // KMK <--
+
         val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
         val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
         // SY -->
@@ -707,6 +721,12 @@ class ReaderActivity : BaseActivity() {
                 isScrollingThroughPages = true
                 moveToPageIndex(it)
             },
+            // KMK -->
+            archiveSections = archiveSections,
+            archivePageBookmarks = state.archivePageBookmarks,
+            onToggleArchivePageBookmark = viewModel::toggleArchivePageBookmark,
+            onRemoveArchivePageBookmark = viewModel::removeArchivePageBookmark,
+            // KMK <--
 
             readingMode = ReadingMode.fromPreference(
                 viewModel.getMangaReadingMode(resolveDefault = false),

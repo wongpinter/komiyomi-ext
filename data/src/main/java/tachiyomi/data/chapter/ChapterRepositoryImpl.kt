@@ -6,8 +6,10 @@ import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.DatabaseHandler
 import tachiyomi.data.MemoColumnAdapter
+import tachiyomi.domain.chapter.model.ArchiveReadingProgress
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.model.archivePageCount
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.manga.model.Manga
 
@@ -146,6 +148,22 @@ class ChapterRepositoryImpl(
             )
         }
     }
+
+    // KMK -->
+    override fun getArchiveReadingProgress(sourceId: Long): Flow<List<ArchiveReadingProgress>> = handler.subscribeToList {
+        chaptersQueries.getArchiveReadingProgress(sourceId) { chapterId, mangaId, path, completed, lastPage, lastRead, memo ->
+            ArchiveReadingProgress(
+                chapterId = chapterId,
+                mangaId = mangaId,
+                path = path,
+                completed = completed,
+                lastPage = lastPage,
+                pageCount = memo.archivePageCount(),
+                lastRead = lastRead,
+            )
+        }
+    }
+    // KMK <--
 
     // SY -->
     override suspend fun getChapterByUrl(url: String): List<Chapter> {

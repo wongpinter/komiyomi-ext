@@ -41,6 +41,9 @@ object SettingsDownloadScreen : SearchableSettings {
 
         val downloadPreferences = remember { Injekt.get<DownloadPreferences>() }
         val parallelSourceLimit by downloadPreferences.parallelSourceLimit().collectAsState()
+        // KMK -->
+        val parallelChapterLimit by downloadPreferences.parallelChapterLimit().collectAsState()
+        // KMK <--
         val parallelPageLimit by downloadPreferences.parallelPageLimit().collectAsState()
         return listOf(
             Preference.PreferenceItem.SwitchPreference(
@@ -51,6 +54,13 @@ object SettingsDownloadScreen : SearchableSettings {
                 preference = downloadPreferences.saveChaptersAsCBZ(),
                 title = stringResource(MR.strings.save_chapter_as_cbz),
             ),
+            // KMK -->
+            Preference.PreferenceItem.SwitchPreference(
+                preference = downloadPreferences.saveDownloadedChaptersToLocalArchive(),
+                title = stringResource(KMR.strings.download_save_to_local_archive),
+                subtitle = stringResource(KMR.strings.download_save_to_local_archive_summary),
+            ),
+            // KMK <--
             Preference.PreferenceItem.SwitchPreference(
                 preference = downloadPreferences.splitTallImages(),
                 title = stringResource(MR.strings.split_tall_images),
@@ -62,6 +72,15 @@ object SettingsDownloadScreen : SearchableSettings {
                 title = stringResource(MR.strings.pref_download_concurrent_sources),
                 onValueChanged = { downloadPreferences.parallelSourceLimit().set(it) },
             ),
+            // KMK -->
+            Preference.PreferenceItem.SliderPreference(
+                value = parallelChapterLimit,
+                valueRange = 1..10,
+                title = stringResource(KMR.strings.download_concurrent_chapters),
+                subtitle = stringResource(KMR.strings.download_concurrent_chapters_summary),
+                onValueChanged = { downloadPreferences.parallelChapterLimit().set(it) },
+            ),
+            // KMK <--
             Preference.PreferenceItem.SliderPreference(
                 value = parallelPageLimit,
                 valueRange = 1..15,

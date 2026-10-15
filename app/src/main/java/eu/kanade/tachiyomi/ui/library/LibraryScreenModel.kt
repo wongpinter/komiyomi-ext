@@ -900,9 +900,56 @@ class LibraryScreenModel(
             DownloadAction.NEXT_25_CHAPTERS -> downloadNextChapters(25)
             DownloadAction.UNREAD_CHAPTERS -> downloadNextChapters(null)
             DownloadAction.BOOKMARKED_CHAPTERS -> downloadBookmarkedChapters()
+            // KMK -->
+            DownloadAction.ALL_CHAPTERS -> downloadAllChapters()
+            // KMK <--
         }
         clearSelection()
     }
+
+    // KMK -->
+    private fun downloadAllChapters() {
+        val mangas = state.value.selectedManga
+        screenModelScope.launchNonCancellable {
+            mangas.forEach { manga ->
+                if (manga.source == MERGED_SOURCE_ID) {
+                    val mergedMangas = getMergedMangaById.await(manga.id).associateBy { it.id }
+                    getMergedChaptersByMangaId.await(manga.id, applyFilter = true)
+                        .groupBy { it.mangaId }
+                        .forEach ab@{ (mangaId, chapters) ->
+                            val mergedManga = mergedMangas[mangaId] ?: return@ab
+                            val chaptersToDownload = chapters.fastFilterNot { chapter ->
+                                downloadManager.getQueuedDownloadOrNull(chapter.id) != null ||
+                                    downloadManager.isChapterDownloaded(
+                                        chapter.name,
+                                        chapter.scanlator,
+                                        chapter.url,
+                                        mergedManga.ogTitle,
+                                        mergedManga.source,
+                                    )
+                            }
+                            downloadManager.downloadChapters(mergedManga, chaptersToDownload)
+                        }
+
+                    return@forEach
+                }
+
+                val chapters = getChaptersByMangaId.await(manga.id, applyFilter = true)
+                    .fastFilterNot { chapter ->
+                        downloadManager.getQueuedDownloadOrNull(chapter.id) != null ||
+                            downloadManager.isChapterDownloaded(
+                                chapter.name,
+                                chapter.scanlator,
+                                chapter.url,
+                                manga.ogTitle,
+                                manga.source,
+                            )
+                    }
+                downloadManager.downloadChapters(manga, chapters)
+            }
+        }
+    }
+    // KMK <--
 
     private fun downloadNextChapters(amount: Int?) {
         val mangas = state.value.selectedManga

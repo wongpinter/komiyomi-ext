@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.supervisorScope
@@ -213,6 +214,23 @@ class LocalSource(
             manga.thumbnail_url = it.uri.toString()
         }
 
+        // KMK -->
+        val standaloneArchive = fileSystem.resolveFile(manga.url)
+            ?.takeIf { it.isFile && Archive.isSupported(it) }
+        if (standaloneArchive != null) {
+            try {
+                getComicInfoForChapter(standaloneArchive) { stream, _ ->
+                    setMangaDetailsFromComicInfoFile(stream, manga)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Error setting manga details from local metadata for ${manga.title}" }
+            }
+            return@withIOContext manga
+        }
+        // KMK <--
+
         // Augment manga details based on metadata files
         try {
             val mangaDir = fileSystem.getMangaDirectory(manga.url) ?: error("${manga.url} is not a valid directory")
@@ -413,12 +431,11 @@ class LocalSource(
 
     fun getFormat(chapter: SChapter): Format {
         try {
-            val (mangaDirName, chapterName) = chapter.url.split('/', limit = 2)
-            return fileSystem.getBaseDirectory()
-                ?.findFile(mangaDirName)
-                ?.findFile(chapterName)
+            // KMK -->
+            return fileSystem.resolveFile(chapter.url)
                 ?.let(Format.Companion::valueOf)
                 ?: throw Exception(context.stringResource(MR.strings.chapter_not_found))
+            // KMK <--
         } catch (_: Format.UnknownFormatException) {
             throw Exception(context.stringResource(MR.strings.local_invalid_format))
         } catch (e: Exception) {

@@ -69,6 +69,7 @@ import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
 import eu.kanade.tachiyomi.util.system.isPreviewBuildType
+import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.telemetryIncluded
 import exh.log.CrashlyticsPrinter
@@ -180,7 +181,9 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
                         setContentText(stringResource(MR.strings.notification_incognito_text))
                         setSmallIcon(R.drawable.ic_glasses_with_hat_24dp)
                         setColor(ContextCompat.getColor(applicationContext, R.color.ic_launcher))
-                        setLargeIcon(BitmapFactory.decodeResource(applicationContext.resources, R.drawable.komikku))
+                        // KMK -->
+                        setLargeIcon(applicationContext.komiyomiExtIconBitmap())
+                        // KMK <--
                         setOngoing(true)
 
                         val pendingIntent = PendingIntent.getBroadcast(

@@ -1,33 +1,18 @@
 <div align="center">
 
-<a href="https://komikku-app.github.io">
-  <img width=200px height=200px src="./.github/readme-images/app-icon.png"/>
+<a href="https://github.com/wongpinter/komiyomi-ext">
+  <img width=200px height=200px src="./branding/komiyomi-ext-icon.svg"/>
 </a><br/>
-<a href="https://trendshift.io/repositories/13696" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13696" alt="komikku-app%2Fkomikku | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
- <h1 align="center"> Komikku </h1>
+ <h1 align="center"> Komiyomi Ext </h1>
 
-| Releases | Preview |
-|----------|---------|
-| <div align="center"> [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku/latest/total?label=Latest%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku/releases/latest) [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku/total?label=Total%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku/releases) [![Stable build](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku/build_release.yml?labelColor=27303D&label=Stable&labelColor=06599d&color=043b69)](https://github.com/komikku-app/komikku/actions/workflows/build_release.yml) | <div align="center"> [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku-preview/latest/total?label=Latest%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku-preview/releases/latest) [![GitHub downloads](https://img.shields.io/github/downloads/komikku-app/komikku-preview/total?label=Total%20Downloads&labelColor=27303D&color=0D1117&logo=github&logoColor=FFFFFF&style=flat)](https://github.com/komikku-app/komikku-preview/releases) [![Preview build](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku-preview/build_app.yml?labelColor=27303D&label=Preview&labelColor=2c2c47&color=1c1c39)](https://github.com/komikku-app/komikku-preview/actions/workflows/build_app.yml) |
+[Latest release](https://github.com/wongpinter/komiyomi-ext/releases/latest) · [All releases](https://github.com/wongpinter/komiyomi-ext/releases) · [Source](https://github.com/wongpinter/komiyomi-ext)
 
 *Requires Android 8.0 or higher.*
 
-[![Discord](https://img.shields.io/discord/1242381704459452488.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.gg/85jB7V5AJR)
-[![CI](https://img.shields.io/github/actions/workflow/status/komikku-app/komikku/build_push.yml?labelColor=27303D&label=CI)](https://github.com/komikku-app/komikku/actions/workflows/build_push.yml)
-[![License: Apache-2.0](https://img.shields.io/github/license/komikku-app/komikku?labelColor=27303D&color=0877d2)](/LICENSE)
-[![Translation status](https://img.shields.io/weblate/progress/komikku-app?labelColor=27303D&color=946300)](https://hosted.weblate.org/engage/komikku-app/)
-
-## Download
-
-[![Stable](https://img.shields.io/github/release/komikku-app/komikku.svg?maxAge=3600&label=Stable&labelColor=06599d&color=043b69)](https://github.com/komikku-app/komikku/releases/latest)
-[![Preview](https://img.shields.io/github/v/release/komikku-app/komikku-preview.svg?maxAge=3600&label=Preview&labelColor=2c2c47&color=1c1c39)](https://github.com/komikku-app/komikku-preview/releases/latest)
-
-*Requires Android 8.0 or higher.*
-
-[![Sponsor me on GitHub](https://custom-icon-badges.demolab.com/badge/-Sponsor-ea4aaa?style=for-the-badge&logo=heart&logoColor=white)](https://github.com/sponsors/cuong-tran "Sponsor me on GitHub")
+[![License: Apache-2.0](https://img.shields.io/github/license/wongpinter/komiyomi-ext?labelColor=27303D&color=0877d2)](/LICENSE)
 
 <div align="left">
-A free and open source manga reader which is based off TachiyomiSY & Mihon/Tachiyomi. This fork is meant to provide new & useful features while regularly take features/updates from Mihon or other forks like SY, J2K and Neko...
+Komiyomi Ext is an independent, open-source manga reader based on Komikku, Mihon, and TachiyomiSY. It is the extension-enabled companion to Komiyomi, the standalone CBZ/CBR reader. This fork adds features for online sources and offline reading while preserving attribution to its upstream projects.
 
 ![screenshots of app](./.github/readme-images/screens.png)
 
@@ -35,7 +20,14 @@ A free and open source manga reader which is based off TachiyomiSY & Mihon/Tachi
 
 ## Features
 
-### Komikku's unique features:
+### Komiyomi Ext features:
+- Read manga from installable source extensions, with discovery, recommendations, saved searches, and multi-source browsing.
+- Keep a local CBZ/CBR library beside your online sources. Choose an existing folder, scan its nested folders, and read archives in place; Komiyomi Ext does not move the files.
+- Read large CBZ files page by page, with a cached archive index to speed up later opens.
+- Track local archive progress and favorites, filter by reading status, sort the library, and switch between grid and list views.
+- Navigate chapters and sections in an archive, jump to a page, and bookmark pages while reading.
+- Download chapters in the background, set how many chapters can download at once, or queue every chapter of a manga.
+- Optionally save downloaded chapters as CBZ files in the Local folder, grouped by manga and source.
 - `Suggestions` automatically showing source-website's recommendations / suggestions / related to current entry for all sources.
 - `Hidden categories` to hide yours things from *nosy* people.
 - `Auto theme color` based on each entry's cover for entry View & Reader.
@@ -61,10 +53,16 @@ A free and open source manga reader which is based off TachiyomiSY & Mihon/Tachi
 - In-app progress banner shows Library syncing / Backup restoring / Library updating progress.
 - Auto-install app update.
 - Configurable interval to refresh entries from downloaded storage.
-- Forked from SY so everything from SY.
-- Always up-to-date with Mihon & SY
+- Includes features from Mihon and TachiyomiSY, with compatible upstream updates brought in over time.
 - More app themes & better UI, improvements...
 
+### Set up a local CBZ/CBR library
+
+1. Open **More → Settings → Data → Local manga folder**.
+2. Choose the folder that contains your CBZ or CBR files and grant access when Android asks.
+3. Open the **Local** tab in the bottom navigation. Use **Rescan folder** after adding or changing files.
+
+The selected folder can contain nested folders. Archives stay where they are; the Local tab indexes their names and file details, then loads pages when you open an archive. Downloaded chapters can also be saved as CBZ files under the configured Local folder from **More → Settings → Downloads**.
 
 <details>
   <summary>Features from Mihon / Tachiyomi</summary>
@@ -134,10 +132,10 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 
 <details><summary>Issues</summary>
 
-[Website](https://komikku-app.github.io/)
+[Project repository](https://github.com/wongpinter/komiyomi-ext)
 
-1. **Before reporting a new issue, take a look at the [FAQ](https://komikku-app.github.io/docs/faq/general), the [changelog](https://github.com/komikku-app/komikku/releases) and the already opened [issues](https://github.com/komikku-app/komikku/issues).**
-2. If you are unsure, ask here: [![Discord](https://img.shields.io/discord/1242381704459452488.svg?label=&labelColor=6A7EC2&color=7389D8&logo=discord&logoColor=FFFFFF)](https://discord.gg/85jB7V5AJR)
+1. **Before reporting a new issue, check the [release notes](https://github.com/wongpinter/komiyomi-ext/releases) and [open issues](https://github.com/wongpinter/komiyomi-ext/issues).**
+2. For questions, use the [Komiyomi Ext issue tracker](https://github.com/wongpinter/komiyomi-ext/issues).
 
 </details>
 
@@ -151,7 +149,7 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 * If it could be device-dependent, try reproducing on another device (if possible)
 * Don't group unrelated requests into one issue
 
-Use the [issue forms](https://github.com/komikku-app/komikku/issues/new/choose) to submit a bug.
+Use the [issue forms](https://github.com/wongpinter/komiyomi-ext/issues/new/choose) to submit a bug.
 
 </details>
 
@@ -173,15 +171,11 @@ See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
 
 <div align="center">
 
-### Credits
+### Upstream credits
 
-Thank you to all the people who have contributed!
+Komiyomi Ext builds on the work of Komikku, Mihon, TachiyomiSY, and their contributors. Their names identify the upstream projects and do not imply affiliation.
 
-<a href="https://github.com/komikku-app/komikku/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=komikku-app/komikku" alt="Komikku app contributors" title="Komikku app contributors" width="800"/>
-</a>
-
-![Visitor Count](https://count.getloli.com/get/@komikku-app?theme=capoo-2)
+See the [Komikku contributor history](https://github.com/komikku-app/komikku/graphs/contributors) and the upstream credits in the app's About section.
 
 ### Disclaimer
 

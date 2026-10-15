@@ -1261,6 +1261,15 @@ class MangaScreenModel(
             .map { it.chapter }
     }
 
+    // KMK -->
+    private fun getAllUndownloadedChapters(): List<Chapter> {
+        val chapterItems = if (skipFiltered) filteredChapters.orEmpty() else allChapters.orEmpty()
+        return chapterItems
+            .filter { (_, dlStatus) -> dlStatus == Download.State.NOT_DOWNLOADED }
+            .map { it.chapter }
+    }
+    // KMK <--
+
     private fun getUnreadChaptersSorted(): List<Chapter> {
         val manga = successState?.manga ?: return emptyList()
         val chaptersSorted = getUnreadChapters().sortedWith(getChapterSort(manga))
@@ -1340,6 +1349,9 @@ class MangaScreenModel(
             DownloadAction.NEXT_5_CHAPTERS -> getUnreadChaptersSorted().take(5)
             DownloadAction.NEXT_10_CHAPTERS -> getUnreadChaptersSorted().take(10)
             DownloadAction.NEXT_25_CHAPTERS -> getUnreadChaptersSorted().take(25)
+            // KMK -->
+            DownloadAction.ALL_CHAPTERS -> getAllUndownloadedChapters()
+            // KMK <--
             DownloadAction.UNREAD_CHAPTERS -> getUnreadChapters()
             DownloadAction.BOOKMARKED_CHAPTERS -> getBookmarkedChapters()
         }

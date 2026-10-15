@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import android.app.Application
-import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -43,14 +42,17 @@ internal class ArchivePageLoader(private val reader: ArchiveReader) : PageLoader
                     .filter { it.isFile && ImageUtil.isImage(it.name) { reader.getInputStream(it.name)!! } }
                     .sortedWith { f1, f2 -> f1.name.compareToCaseInsensitiveNaturalOrder(f2.name) }
                     .forEach { entry ->
-                        File(tmpDir, entry.name.substringAfterLast("/"))
-                            .also { it.createNewFile() }
-                            .outputStream()
-                            .use { output ->
-                                reader.getInputStream(entry.name)?.use { input ->
-                                    input.copyTo(output)
-                                }
-                            }
+                        // KMK -->
+                        val path = entry.name.replace('\\', '/').trimStart('/')
+                        if (path.isBlank() || path.split('/').any { it.isBlank() || it == "." || it == ".." }) return@forEach
+                        val root = tmpDir.canonicalFile
+                        val cachedFile = File(root, path).canonicalFile
+                        if (!cachedFile.toPath().startsWith(root.toPath())) return@forEach
+                        cachedFile.parentFile?.mkdirs()
+                        cachedFile.outputStream().use { output ->
+                            reader.getInputStream(entry.name)?.use { input -> input.copyTo(output) }
+                        }
+                        // KMK <--
                     }
             }
         }
@@ -62,7 +64,21 @@ internal class ArchivePageLoader(private val reader: ArchiveReader) : PageLoader
     override suspend fun getPages(): List<ReaderPage> = reader.useEntries { entries ->
         // SY -->
         if (readerPreferences.archiveReaderMode().get() == ReaderPreferences.ArchiveReaderMode.CACHE_TO_DISK) {
-            return DirectoryPageLoader(UniFile.fromFile(tmpDir)!!).getPages()
+            // KMK -->
+            return@useEntries tmpDir.walkTopDown()
+                .filter { it.isFile && ImageUtil.isImage(it.name) { it.inputStream() } }
+                .sortedWith { first, second ->
+                    first.relativeTo(tmpDir).invariantSeparatorsPath
+                        .compareToCaseInsensitiveNaturalOrder(second.relativeTo(tmpDir).invariantSeparatorsPath)
+                }
+                .mapIndexed { index, file ->
+                    ReaderPage(index, url = file.relativeTo(tmpDir).invariantSeparatorsPath).apply {
+                        stream = { file.inputStream() }
+                        status = Page.State.Ready
+                    }
+                }
+                .toList()
+            // KMK <--
         }
         // SY <--
         entries
@@ -86,7 +102,9 @@ internal class ArchivePageLoader(private val reader: ArchiveReader) : PageLoader
                     }
                 val imageBytes by lazy { runBlocking { imageBytesDeferred?.await() } }
                 // SY <--
-                ReaderPage(i).apply {
+                // KMK -->
+                ReaderPage(i, url = entry.name).apply {
+                    // KMK <--
                     // SY -->
                     stream = { imageBytes?.copyOf()?.inputStream() ?: reader.getInputStream(entry.name)!! }
                     // SY <--

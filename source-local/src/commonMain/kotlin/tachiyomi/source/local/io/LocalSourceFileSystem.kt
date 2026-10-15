@@ -6,6 +6,10 @@ expect class LocalSourceFileSystem {
 
     fun getBaseDirectory(): UniFile?
 
+    // KMK -->
+    fun resolveFile(relativePath: String): UniFile?
+    // KMK <--
+
     fun getFilesInBaseDirectory(): List<UniFile>
 
     fun getMangaDirectory(name: String): UniFile?

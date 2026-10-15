@@ -21,7 +21,9 @@ fun LogoHeader() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_komikku),
+            // KMK -->
+            painter = painterResource(R.drawable.ic_komiyomi_ext_logo),
+            // KMK <--
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier

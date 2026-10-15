@@ -1,6 +1,7 @@
 package tachiyomi.domain.chapter.repository
 
 import kotlinx.coroutines.flow.Flow
+import tachiyomi.domain.chapter.model.ArchiveReadingProgress
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 
@@ -27,6 +28,10 @@ interface ChapterRepository {
     suspend fun getChapterByMangaIdAsFlow(mangaId: Long, applyFilter: Boolean = false): Flow<List<Chapter>>
 
     suspend fun getChapterByUrlAndMangaId(url: String, mangaId: Long): Chapter?
+
+    // KMK -->
+    fun getArchiveReadingProgress(sourceId: Long): Flow<List<ArchiveReadingProgress>>
+    // KMK <--
 
     // SY -->
     suspend fun getChapterByUrl(url: String): List<Chapter>

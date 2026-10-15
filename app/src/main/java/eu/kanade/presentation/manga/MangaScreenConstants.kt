@@ -5,6 +5,9 @@ enum class DownloadAction {
     NEXT_5_CHAPTERS,
     NEXT_10_CHAPTERS,
     NEXT_25_CHAPTERS,
+    // KMK -->
+    ALL_CHAPTERS,
+    // KMK <--
     UNREAD_CHAPTERS,
     BOOKMARKED_CHAPTERS,
 }

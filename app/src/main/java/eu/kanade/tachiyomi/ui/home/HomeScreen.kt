@@ -78,13 +78,15 @@ object HomeScreen : Screen() {
     @Suppress("ConstPropertyName")
     private const val TabNavigatorKey = "HomeTabs"
 
+    // KMK -->
     private val TABS = listOf(
         LibraryTab,
-        UpdatesTab,
-        HistoryTab,
+        LocalLibraryTab,
         BrowseTab,
+        UpdatesTab,
         MoreTab,
     )
+    // KMK <--
 
     @Composable
     override fun Content() {

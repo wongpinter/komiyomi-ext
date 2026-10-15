@@ -89,6 +89,9 @@ import tachiyomi.domain.chapter.interactor.GetMergedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.chapter.model.archivePageBookmarks
+import tachiyomi.domain.chapter.model.withArchivePageBookmarks
+import tachiyomi.domain.chapter.model.withArchivePageCount
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.history.interactor.GetNextChapters
@@ -364,6 +367,11 @@ class ReaderViewModel @JvmOverloads constructor(
                     currentChapter.requestedPage = currentChapter.chapter.last_page_read
                 }
                 chapterId = currentChapter.chapter.id!!
+                // KMK -->
+                mutableState.update {
+                    it.copy(archivePageBookmarks = currentChapter.chapter.memo.archivePageBookmarks())
+                }
+                // KMK <--
             }
             .launchIn(viewModelScope)
 
@@ -824,6 +832,13 @@ class ReaderViewModel @JvmOverloads constructor(
         if (!incognitoMode && page.status !is Page.State.Error) {
             readerChapter.chapter.last_page_read = pageIndex
 
+            // KMK -->
+            val archiveMemo = readerChapter.pages?.size
+                ?.takeIf { isArchiveChapter(readerChapter) }
+                ?.let { readerChapter.chapter.memo.withArchivePageCount(it) }
+            if (archiveMemo != null) readerChapter.chapter.memo = archiveMemo
+            // KMK <--
+
             if (readerChapter.pages?.lastIndex == pageIndex ||
                 // SY -->
                 (hasExtraPage && readerChapter.pages?.lastIndex?.minus(1) == page.index)
@@ -844,6 +859,9 @@ class ReaderViewModel @JvmOverloads constructor(
                     id = readerChapter.chapter.id!!,
                     read = readerChapter.chapter.read,
                     lastPageRead = readerChapter.chapter.last_page_read.toLong(),
+                    // KMK -->
+                    memo = archiveMemo,
+                    // KMK <--
                 ),
             )
 
@@ -855,6 +873,39 @@ class ReaderViewModel @JvmOverloads constructor(
             // SY <--
         }
     }
+
+    // KMK -->
+    fun toggleArchivePageBookmark() {
+        val pageIndex = state.value.currentPage - 1
+        if (pageIndex < 0) return
+        updateArchivePageBookmarks { bookmarks ->
+            if (pageIndex in bookmarks) bookmarks - pageIndex else bookmarks + pageIndex
+        }
+    }
+
+    fun removeArchivePageBookmark(pageIndex: Int) {
+        updateArchivePageBookmarks { bookmarks -> bookmarks - pageIndex }
+    }
+
+    private fun updateArchivePageBookmarks(transform: (List<Int>) -> List<Int>) {
+        val chapter = state.value.currentChapter ?: return
+        if (!isArchiveChapter(chapter)) return
+        val pageCount = chapter.pages?.size ?: return
+        val bookmarks = transform(chapter.chapter.memo.archivePageBookmarks())
+            .filter { it in 0 until pageCount }
+            .distinct()
+            .sorted()
+        val memo = chapter.chapter.memo.withArchivePageBookmarks(bookmarks)
+        chapter.chapter.memo = memo
+        mutableState.update { it.copy(archivePageBookmarks = bookmarks) }
+        viewModelScope.launch {
+            updateChapter.await(ChapterUpdate(id = chapter.chapter.id!!, memo = memo))
+        }
+    }
+
+    private fun isArchiveChapter(chapter: ReaderChapter): Boolean =
+        listOf(".cbz", ".cbr", ".zip", ".rar").any { chapter.chapter.url.endsWith(it, ignoreCase = true) }
+    // KMK <--
 
     private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {
         readerChapter.chapter.read = true
@@ -1473,6 +1524,9 @@ class ReaderViewModel @JvmOverloads constructor(
         val bookmarked: Boolean = false,
         val isLoadingAdjacentChapter: Boolean = false,
         val currentPage: Int = -1,
+        // KMK -->
+        val archivePageBookmarks: List<Int> = emptyList(),
+        // KMK <--
 
         /**
          * Viewer used to display the pages (pager, webtoon, ...).

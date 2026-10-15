@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.util.lang.chop
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.getBitmapOrNull
+import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -69,7 +70,9 @@ class LibraryUpdateNotifier(
      * Bitmap of the app for notifications.
      */
     private val notificationBitmap by lazy {
-        BitmapFactory.decodeResource(context.resources, R.drawable.komikku)
+        // KMK -->
+        context.komiyomiExtIconBitmap()
+        // KMK <--
     }
 
     /**
@@ -164,7 +167,9 @@ class LibraryUpdateNotifier(
         ) {
             setContentTitle(context.pluralStringResource(MR.plurals.notification_update_error, failed, failed))
             setContentText(context.stringResource(MR.strings.action_show_errors))
-            setSmallIcon(R.drawable.ic_komikku)
+            // KMK -->
+            setSmallIcon(R.drawable.ic_komiyomi_ext_monochrome)
+            // KMK <--
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
 
             setContentIntent(NotificationReceiver.openErrorLogPendingActivity(context))
@@ -205,7 +210,9 @@ class LibraryUpdateNotifier(
                 }
             }
 
-            setSmallIcon(R.drawable.ic_komikku)
+            // KMK -->
+            setSmallIcon(R.drawable.ic_komiyomi_ext_monochrome)
+            // KMK <--
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
             setLargeIcon(notificationBitmap)
 
@@ -241,7 +248,9 @@ class LibraryUpdateNotifier(
             val description = getNewChaptersDescription(chapters)
             setContentText(description)
 
-            setSmallIcon(R.drawable.ic_komikku)
+            // KMK -->
+            setSmallIcon(R.drawable.ic_komiyomi_ext_monochrome)
+            // KMK <--
             setColor(ContextCompat.getColor(context, R.color.ic_launcher))
 
             if (icon != null) {

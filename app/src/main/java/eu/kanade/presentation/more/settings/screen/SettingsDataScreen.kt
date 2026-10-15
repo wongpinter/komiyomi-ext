@@ -124,20 +124,40 @@ object SettingsDataScreen : SearchableSettings {
         val backupPreferences = Injekt.get<BackupPreferences>()
         val storagePreferences = Injekt.get<StoragePreferences>()
 
+        // KMK -->
+        val localSourceDirectoryPreference = storagePreferences.localSourceDirectory()
+        val localSourceDirectory by localSourceDirectoryPreference.collectAsState()
+        // KMK <--
+
         val syncPreferences = remember { Injekt.get<SyncPreferences>() }
         val syncService by syncPreferences.syncService().collectAsState()
 
-        return persistentListOf(
-            getStorageLocationPref(storagePreferences = storagePreferences),
-            Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.pref_storage_location_info)),
+        return (
+            persistentListOf(
+                getStorageLocationPref(storagePreferences = storagePreferences),
+                Preference.PreferenceItem.InfoPreference(stringResource(MR.strings.pref_storage_location_info)),
 
-            getBackupAndRestoreGroup(backupPreferences = backupPreferences),
-            getDataGroup(),
-            getExportGroup(),
-        ) +
-            // SY -->
-            getSyncPreferences(syncPreferences = syncPreferences, syncService = syncService)
-        // SY <--
+                // KMK -->
+                getLocalSourceLocationPref(localSourceDirectoryPreference),
+                Preference.PreferenceItem.InfoPreference(stringResource(KMR.strings.pref_local_source_location_info)),
+                if (localSourceDirectory.isNotBlank()) {
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(KMR.strings.action_reset_local_source_location),
+                        onClick = { localSourceDirectoryPreference.set("") },
+                    )
+                } else {
+                    null
+                },
+                // KMK <--
+
+                getBackupAndRestoreGroup(backupPreferences = backupPreferences),
+                getDataGroup(),
+                getExportGroup(),
+            ) +
+                // SY -->
+                getSyncPreferences(syncPreferences = syncPreferences, syncService = syncService)
+            // SY <--
+            ).filterNotNull()
     }
 
     @Composable
@@ -230,6 +250,41 @@ object SettingsDataScreen : SearchableSettings {
             },
         )
     }
+
+    // KMK -->
+    @Composable
+    private fun getLocalSourceLocationPref(
+        localSourceDirectoryPreference: tachiyomi.core.common.preference.Preference<String>,
+    ): Preference.PreferenceItem.TextPreference {
+        val context = LocalContext.current
+        val localSourceDirectory by localSourceDirectoryPreference.collectAsState()
+        val pickLocalSourceDirectory = storageLocationPicker(localSourceDirectoryPreference)
+        val selectedDirectory = remember(localSourceDirectory) {
+            runCatching {
+                UniFile.fromUri(context, localSourceDirectory.toUri())
+                    ?.takeIf { it.exists() && it.isDirectory && it.canRead() }
+                    ?.displayablePath
+            }.getOrNull()
+        }
+        val subtitle = if (localSourceDirectory.isBlank()) {
+            stringResource(KMR.strings.pref_local_source_location_default)
+        } else {
+            selectedDirectory ?: stringResource(KMR.strings.pref_local_source_location_unavailable)
+        }
+
+        return Preference.PreferenceItem.TextPreference(
+            title = stringResource(KMR.strings.pref_local_source_location),
+            subtitle = subtitle,
+            onClick = {
+                try {
+                    pickLocalSourceDirectory.launch(null)
+                } catch (_: Exception) {
+                    context.toast(MR.strings.file_picker_error)
+                }
+            },
+        )
+    }
+    // KMK <--
 
     @Composable
     private fun getBackupAndRestoreGroup(backupPreferences: BackupPreferences): Preference.PreferenceGroup {
@@ -457,7 +512,9 @@ object SettingsDataScreen : SearchableSettings {
                 options = exportOptions,
                 onConfirm = { options ->
                     exportOptions = options
-                    saveFileLauncher.launch("komikku_library.csv")
+                    // KMK -->
+                    saveFileLauncher.launch("komiyomi_ext_library.csv")
+                    // KMK <--
                 },
                 onDismissRequest = { showDialog = false },
             )

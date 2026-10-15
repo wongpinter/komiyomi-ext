@@ -281,7 +281,9 @@ class BackupRestorer(
     private fun writeErrorLog(): File {
         try {
             if (errors.isNotEmpty()) {
-                val file = context.createFileInCacheDir("komikku_restore_error.txt")
+                // KMK -->
+                val file = context.createFileInCacheDir("komiyomi_ext_restore_error.txt")
+                // KMK <--
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
 
                 file.bufferedWriter().use { out ->

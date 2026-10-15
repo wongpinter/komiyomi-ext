@@ -32,7 +32,9 @@ import java.io.File
 
 class StorageManager(
     private val context: Context,
-    storagePreferences: StoragePreferences,
+    // KMK -->
+    private val storagePreferences: StoragePreferences,
+    // KMK <--
 ) {
 
     private val scope = CoroutineScope(Dispatchers.IO)
@@ -59,6 +61,14 @@ class StorageManager(
                 _changes.send(Unit)
             }
             .launchIn(scope)
+
+        // KMK -->
+        storagePreferences.localSourceDirectory().changes()
+            .drop(1)
+            .distinctUntilChanged()
+            .onEach { _changes.send(Unit) }
+            .launchIn(scope)
+        // KMK <--
     }
 
     private fun getBaseDir(uri: String): UniFile? {
@@ -79,6 +89,13 @@ class StorageManager(
     }
 
     fun getLocalSourceDirectory(): UniFile? {
+        // KMK -->
+        val localSourceUri = storagePreferences.localSourceDirectory().get()
+        if (localSourceUri.isNotBlank()) {
+            return UniFile.fromUri(context, localSourceUri.toUri())
+                ?.takeIf { it.exists() && it.isDirectory && it.canRead() }
+        }
+        // KMK <--
         return baseDir?.createDirectory(LOCAL_SOURCE_PATH)
     }
 

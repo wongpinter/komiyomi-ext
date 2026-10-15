@@ -27,12 +27,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.reader.components.ArchiveChapterNavigator
 import eu.kanade.presentation.reader.components.ChapterNavigator
+import eu.kanade.presentation.reader.components.PageBookmarkControls
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import kotlinx.collections.immutable.ImmutableSet
+import mihon.core.archive.ArchiveSection
 import tachiyomi.presentation.core.components.material.padding
 
 private val readerBarsSlideAnimationSpec = tween<IntOffset>(200)
@@ -68,6 +71,12 @@ fun ReaderAppBars(
     currentPage: Int,
     totalPages: Int,
     onPageIndexChange: (Int) -> Unit,
+    // KMK -->
+    archiveSections: List<ArchiveSection>,
+    archivePageBookmarks: List<Int>,
+    onToggleArchivePageBookmark: () -> Unit,
+    onRemoveArchivePageBookmark: (Int) -> Unit,
+    // KMK <--
 
     readingMode: ReadingMode,
     onClickReadingMode: () -> Unit,
@@ -170,8 +179,9 @@ fun ReaderAppBars(
                         .weight(1f)
                         .align(Alignment.Start),
                 ) {
-                    ChapterNavigator(
+                    ReaderChapterNavigation(
                         isRtl = isRtl,
+                        archiveSections = archiveSections,
                         onNextChapter = onNextChapter,
                         enabledNext = enabledNext,
                         onPreviousChapter = onPreviousChapter,
@@ -204,8 +214,9 @@ fun ReaderAppBars(
                         .weight(1f)
                         .align(Alignment.End),
                 ) {
-                    ChapterNavigator(
+                    ReaderChapterNavigation(
                         isRtl = isRtl,
+                        archiveSections = archiveSections,
                         onNextChapter = onNextChapter,
                         enabledNext = enabledNext,
                         onPreviousChapter = onPreviousChapter,
@@ -235,8 +246,9 @@ fun ReaderAppBars(
                 // SY -->
                 if (navBarType == NavBarType.Bottom) {
                     // SY <--
-                    ChapterNavigator(
+                    ReaderChapterNavigation(
                         isRtl = isRtl,
+                        archiveSections = archiveSections,
                         onNextChapter = onNextChapter,
                         enabledNext = enabledNext,
                         onPreviousChapter = onPreviousChapter,
@@ -250,6 +262,18 @@ fun ReaderAppBars(
                         // SY <--
                     )
                 }
+                // KMK -->
+                if (archiveSections.isNotEmpty()) {
+                    PageBookmarkControls(
+                        currentPage = currentPage.coerceAtLeast(1),
+                        totalPages = totalPages.coerceAtLeast(0),
+                        bookmarks = archivePageBookmarks,
+                        onToggle = onToggleArchivePageBookmark,
+                        onRemove = onRemoveArchivePageBookmark,
+                        onJump = onPageIndexChange,
+                    )
+                }
+                // KMK <--
                 ReaderBottomBar(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -280,3 +304,48 @@ fun ReaderAppBars(
         }
     }
 }
+
+// KMK -->
+@Composable
+private fun ReaderChapterNavigation(
+    isRtl: Boolean,
+    archiveSections: List<ArchiveSection>,
+    onNextChapter: () -> Unit,
+    enabledNext: Boolean,
+    onPreviousChapter: () -> Unit,
+    enabledPrevious: Boolean,
+    currentPage: Int,
+    totalPages: Int,
+    onPageIndexChange: (Int) -> Unit,
+    isVerticalSlider: Boolean,
+    currentPageText: String,
+) {
+    if (archiveSections.isNotEmpty()) {
+        ArchiveChapterNavigator(
+            sections = archiveSections,
+            isRtl = isRtl,
+            isVerticalSlider = isVerticalSlider,
+            currentPage = currentPage.coerceAtLeast(1),
+            totalPages = totalPages,
+            onPageIndexChange = onPageIndexChange,
+            onNextArchive = onNextChapter,
+            enabledNextArchive = enabledNext,
+            onPreviousArchive = onPreviousChapter,
+            enabledPreviousArchive = enabledPrevious,
+        )
+    } else {
+        ChapterNavigator(
+            isRtl = isRtl,
+            onNextChapter = onNextChapter,
+            enabledNext = enabledNext,
+            onPreviousChapter = onPreviousChapter,
+            enabledPrevious = enabledPrevious,
+            currentPage = currentPage,
+            totalPages = totalPages,
+            onPageIndexChange = onPageIndexChange,
+            isVerticalSlider = isVerticalSlider,
+            currentPageText = currentPageText,
+        )
+    }
+}
+// KMK <--

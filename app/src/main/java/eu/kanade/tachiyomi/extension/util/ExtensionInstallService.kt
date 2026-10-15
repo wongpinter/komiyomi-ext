@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.extension.installer.PackageInstallerInstaller
 import eu.kanade.tachiyomi.extension.installer.ShizukuInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionInstaller.Companion.EXTRA_DOWNLOAD_ID
 import eu.kanade.tachiyomi.util.system.getSerializableExtraCompat
+import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import exh.log.xLogE
 import tachiyomi.core.common.i18n.stringResource
@@ -33,9 +34,13 @@ class ExtensionInstallService : Service() {
 
     override fun onCreate() {
         val notification = notificationBuilder(Notifications.CHANNEL_EXTENSIONS_UPDATE) {
-            setSmallIcon(R.drawable.ic_komikku)
+            // KMK -->
+            setSmallIcon(R.drawable.ic_komiyomi_ext_monochrome)
+            // KMK <--
             setColor(ContextCompat.getColor(applicationContext, R.color.ic_launcher))
-            setLargeIcon(BitmapFactory.decodeResource(applicationContext.resources, R.drawable.komikku))
+            // KMK -->
+            setLargeIcon(applicationContext.komiyomiExtIconBitmap())
+            // KMK <--
             setAutoCancel(false)
             setOngoing(true)
             setShowWhen(false)

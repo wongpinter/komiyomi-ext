@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- KMK -->
+    <!-- Keep the app label separate from the Komiyomi CBZ/CBR reader brand. -->
+    <item type="string" name="app_name">@string/komiyomi_ext_app_name</item>
+    <!-- KMK -->
+</resources>

@@ -11,6 +11,17 @@ actual class LocalSourceFileSystem(
         return storageManager.getLocalSourceDirectory()
     }
 
+    // KMK -->
+    actual fun resolveFile(relativePath: String): UniFile? {
+        val segments = relativePath.replace('\\', '/').split('/')
+        if (segments.isEmpty() || segments.any { it.isBlank() || it == "." || it == ".." }) return null
+
+        return segments.fold(getBaseDirectory()) { directory, segment ->
+            directory?.findFile(segment)
+        }
+    }
+    // KMK <--
+
     actual fun getFilesInBaseDirectory(): List<UniFile> {
         return getBaseDirectory()?.listFiles().orEmpty().toList()
     }

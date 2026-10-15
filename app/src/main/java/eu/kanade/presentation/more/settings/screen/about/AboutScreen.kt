@@ -243,7 +243,9 @@ class AboutScreen : Screen() {
 
                 item {
                     TextPreferenceWidget(
-                        title = stringResource(MR.strings.privacy_policy),
+                        // KMK -->
+                        title = stringResource(KMR.strings.upstream_privacy_policy),
+                        // KMK <--
                         onPreferenceClick = { uriHandler.openUri("https://komikku-app.github.io/privacy/") },
                     )
                 }
@@ -256,12 +258,16 @@ class AboutScreen : Screen() {
                         horizontalArrangement = Arrangement.Center,
                     ) {
                         LinkIcon(
-                            label = stringResource(MR.strings.website),
+                            // KMK -->
+                            label = stringResource(KMR.strings.upstream_website),
+                            // KMK <--
                             icon = Icons.Outlined.Public,
                             url = "https://komikku-app.github.io",
                         )
                         LinkIcon(
-                            label = "Discord",
+                            // KMK -->
+                            label = stringResource(KMR.strings.upstream_community),
+                            // KMK <--
                             icon = CustomIcons.Discord,
                             url = "https://discord.gg/85jB7V5AJR",
                         )
@@ -283,7 +289,9 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            url = "https://github.com/komikku-app",
+                            // KMK -->
+                            url = "https://github.com/wongpinter/komiyomi-ext",
+                            // KMK <--
                         )
                     }
                 }

@@ -99,6 +99,21 @@ FROM chapters
 WHERE url = :chapterUrl
 AND manga_id = :mangaId;
 
+-- KMK -->
+getArchiveReadingProgress:
+SELECT
+    C._id AS chapterId,
+    C.manga_id AS mangaId,
+    M.url AS path,
+    C.read AS completed,
+    C.last_page_read AS lastPage,
+    C.last_modified_at AS lastRead,
+    C.memo AS memo
+FROM chapters C
+JOIN mangas M ON C.manga_id = M._id
+WHERE M.source = :sourceId;
+-- KMK <--
+
 getMergedChaptersByMangaId:
 SELECT C.*
 FROM (

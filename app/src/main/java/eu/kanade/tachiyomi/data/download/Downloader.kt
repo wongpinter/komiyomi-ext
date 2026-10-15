@@ -62,11 +62,14 @@ import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
+import java.io.IOException
 import java.util.Locale
 
 /**
@@ -88,6 +91,9 @@ class Downloader(
     // SY -->
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     // SY <--
+    // KMK -->
+    private val storageManager: StorageManager = Injekt.get(),
+    // KMK <--
 ) {
 
     /**
@@ -206,18 +212,28 @@ class Downloader(
         if (isRunning) return
 
         downloaderJob = scope.launch {
+            // KMK -->
             val activeDownloadsFlow = combine(
                 queueState,
                 downloadPreferences.parallelSourceLimit().changes(),
-            ) { a, b -> a to b }.transformLatest { (queue, parallelCount) ->
+                downloadPreferences.parallelChapterLimit().changes(),
+            ) { queue, parallelSourceCount, parallelChapterCount ->
+                Triple(queue, parallelSourceCount, parallelChapterCount)
+            }.transformLatest { (queue, parallelSourceCount, parallelChapterCount) ->
                 while (true) {
-                    val activeDownloads = queue.asSequence()
+                    val downloadsBySource = queue.asSequence()
                         // Ignore completed downloads, leave them in the queue
                         .filter { it.status.value <= Download.State.DOWNLOADING.value }
                         .groupBy { it.source }
+                        .values
+                        .take(parallelSourceCount)
+                    val activeDownloads = (0 until parallelChapterCount)
+                        .asSequence()
+                        .flatMap { chapterIndex ->
+                            downloadsBySource.asSequence().mapNotNull { it.getOrNull(chapterIndex) }
+                        }
+                        .take(parallelChapterCount)
                         .toList()
-                        .take(parallelCount)
-                        .map { (_, downloads) -> downloads.first() }
                     emit(activeDownloads)
 
                     if (activeDownloads.isEmpty()) break
@@ -230,6 +246,7 @@ class Downloader(
                 }
             }
                 .distinctUntilChanged()
+            // KMK <--
 
             // Use supervisorScope to cancel child jobs when the downloader job is cancelled
             supervisorScope {
@@ -438,11 +455,23 @@ class Downloader(
             )
 
             // Only rename the directory if it's downloaded
+            // KMK -->
+            val saveToLocalArchive = downloadPreferences.saveDownloadedChaptersToLocalArchive().get()
             if (downloadPreferences.saveChaptersAsCBZ().get()) {
                 archiveChapter(mangaDir, chapterDirname, tmpDir)
+                if (saveToLocalArchive) {
+                    val archive = mangaDir.findFile("$chapterDirname.cbz")
+                        ?: throw IOException("Failed to find the downloaded CBZ archive")
+                    copyArchiveToLocalLibrary(download, archive)
+                }
             } else {
+                if (saveToLocalArchive) {
+                    val localMangaDir = getLocalArchiveMangaDirectory(download)
+                    archiveChapter(localMangaDir, chapterDirname, tmpDir, deleteTempDir = false)
+                }
                 tmpDir.renameTo(chapterDirname)
             }
+            // KMK <--
             cache.addChapter(chapterDirname, mangaDir, download.manga)
 
             DiskUtil.createNoMediaFile(tmpDir, context)
@@ -644,6 +673,9 @@ class Downloader(
         mangaDir: UniFile,
         dirname: String,
         tmpDir: UniFile,
+        // KMK -->
+        deleteTempDir: Boolean = true,
+        // KMK <--
     ) {
         // SY -->
         val encrypt = CbzCrypto.getPasswordProtectDlPref() && CbzCrypto.isPasswordSet()
@@ -656,9 +688,71 @@ class Downloader(
                 writer.write(file)
             }
         }
-        zip.renameTo("$dirname.cbz")
-        tmpDir.delete()
+        // KMK -->
+        val archiveName = "$dirname.cbz"
+        val backupName = "$archiveName.backup.tmp"
+        val existing = mangaDir.findFile(archiveName)
+        val backup = if (existing == null) {
+            null
+        } else {
+            mangaDir.findFile(backupName)?.delete()
+            if (!existing.renameTo(backupName)) throw IOException("Failed to replace the existing CBZ archive")
+            mangaDir.findFile(backupName)
+        }
+        if (!zip.renameTo(archiveName)) {
+            backup?.renameTo(archiveName)
+            throw IOException("Failed to finalize the CBZ archive")
+        }
+        backup?.delete()
+        // KMK <--
+        // KMK -->
+        if (deleteTempDir) tmpDir.delete()
+        // KMK <--
     }
+
+    // KMK -->
+    private fun copyArchiveToLocalLibrary(download: Download, archive: UniFile) {
+        val mangaDir = getLocalArchiveMangaDirectory(download)
+        val archiveName = archive.name ?: throw IOException("The downloaded CBZ archive has no filename")
+        val temporaryName = "$archiveName.tmp"
+        mangaDir.findFile(temporaryName)?.delete()
+        val temporaryFile = mangaDir.createFile(temporaryName)
+            ?: throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
+        try {
+            archive.openInputStream().buffered().use { input ->
+                temporaryFile.openOutputStream().buffered().use(input::copyTo)
+            }
+
+            val existing = mangaDir.findFile(archiveName)
+            val backupName = "$archiveName.backup.tmp"
+            val backup = if (existing == null) {
+                null
+            } else {
+                mangaDir.findFile(backupName)?.delete()
+                if (!existing.renameTo(backupName)) {
+                    throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
+                }
+                mangaDir.findFile(backupName)
+            }
+            if (!temporaryFile.renameTo(archiveName)) {
+                backup?.renameTo(archiveName)
+                throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
+            }
+            backup?.delete()
+        } catch (error: Throwable) {
+            temporaryFile.delete()
+            throw error
+        }
+    }
+
+    private fun getLocalArchiveMangaDirectory(download: Download): UniFile {
+        val localRoot = storageManager.getLocalSourceDirectory()
+            ?: throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
+        val mangaName = "${download.manga.ogTitle} (${download.source.name})"
+        return localRoot.createDirectory(provider.getMangaDirName(mangaName))
+            ?: throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
+    }
+    // KMK <--
 
     /**
      * Creates a ComicInfo.xml file inside the given directory.
