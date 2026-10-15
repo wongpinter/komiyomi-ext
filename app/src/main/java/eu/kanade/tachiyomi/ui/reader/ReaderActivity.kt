@@ -163,6 +163,16 @@ class ReaderActivity : BaseActivity() {
                 putExtra("page", page)
                 // SY <--
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                // KMK -->
+                if (mangaId != null && Injekt.get<ReaderPreferences>().readerMultiTask().get()) {
+                    data = Uri.Builder()
+                        .scheme("komiyomi")
+                        .authority("reader")
+                        .appendPath(mangaId.toString())
+                        .build()
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
+                }
+                // KMK <--
             }
         }
     }
@@ -1202,6 +1212,14 @@ class ReaderActivity : BaseActivity() {
     fun requestPreloadChapter(chapter: ReaderChapter) {
         lifecycleScope.launchIO { viewModel.preload(chapter) }
     }
+
+    // KMK -->
+    fun autoAdvanceToNextLocalArchive(from: ReaderChapter, to: ReaderChapter): Boolean {
+        if (!viewModel.canAutoAdvanceToNextLocalArchive(from, to)) return false
+        loadNextChapter()
+        return true
+    }
+    // KMK <--
 
     /**
      * Called from the viewer to toggle the visibility of the menu. It's implemented on the

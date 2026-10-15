@@ -43,6 +43,18 @@ class ReaderPreferences(
 
     fun keepScreenOn() = preferenceStore.getBoolean("pref_keep_screen_on_key", false)
 
+    // KMK -->
+    fun readerMultiTask() = preferenceStore.getBoolean("reader_multitask", false)
+
+    fun smartResumeEnabled() = preferenceStore.getBoolean("reader_smart_resume", false)
+
+    fun smartResumeMode() = preferenceStore.getEnum("reader_smart_resume_mode", SmartResumeMode.PERCENTAGE)
+
+    fun smartResumePercentage() = preferenceStore.getInt("reader_smart_resume_percentage", 90)
+
+    fun smartResumePagesRemaining() = preferenceStore.getInt("reader_smart_resume_pages_remaining", 1)
+    // KMK <--
+
     fun defaultReadingMode() = preferenceStore.getInt(
         "pref_default_reading_mode_key",
         ReadingMode.RIGHT_TO_LEFT.flagValue,
@@ -252,6 +264,11 @@ class ReaderPreferences(
         R3_2(KMR.strings.scale_type_3_2, 2f / 3f),
         R16_9(KMR.strings.scale_type_16_9, 9f / 16f),
         R20_9(KMR.strings.scale_type_20_9, 9f / 20f),
+    }
+
+    enum class SmartResumeMode(val titleRes: StringResource) {
+        PERCENTAGE(KMR.strings.smart_resume_mode_percentage),
+        PAGES_REMAINING(KMR.strings.smart_resume_mode_pages_remaining),
     }
     // KMK <--
 

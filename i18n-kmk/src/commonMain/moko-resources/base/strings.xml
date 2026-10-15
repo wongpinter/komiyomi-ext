@@ -34,6 +34,18 @@
     <string name="scale_type_double">Double zoom</string>
     <string name="pref_webtoon_scale_type">Smart scale on wide screen</string>
     <string name="pref_smart_scale_long_strip_gap">Apply Smart scale to Long strip with gaps</string>
+    <!-- KMK -->
+    <string name="pref_reader_multitask">Open reader in a separate task</string>
+    <string name="pref_reader_multitask_summary">Keep different manga readers open at the same time and switch between them from Android Recents</string>
+    <!-- KMK -->
+    <string name="pref_smart_resume">Smart Resume</string>
+    <string name="pref_smart_resume_summary">Open the next chapter when you resume a chapter near its end</string>
+    <string name="pref_smart_resume_mode">Completion threshold</string>
+    <string name="smart_resume_mode_percentage">Percentage read</string>
+    <string name="smart_resume_mode_pages_remaining">Pages remaining</string>
+    <string name="pref_smart_resume_percentage">Resume after this percentage</string>
+    <string name="pref_smart_resume_pages_remaining">Resume with this many pages left</string>
+    <!-- KMK -->
     <string name="scale_type_16_9">16:9</string>
     <string name="scale_type_20_9">20:9</string>
     <string name="scale_type_4_3">4:3</string>

@@ -274,6 +274,9 @@ abstract class PagerViewer(
         logcat { "onTransitionSelected: $transition" }
         val toChapter = transition.to
         if (toChapter != null) {
+            // KMK -->
+            if (activity.autoAdvanceToNextLocalArchive(transition.from, toChapter)) return
+            // KMK <--
             logcat { "Request preload destination chapter because we're on the transition" }
             activity.requestPreloadChapter(toChapter)
         } else if (transition is ChapterTransition.Next) {

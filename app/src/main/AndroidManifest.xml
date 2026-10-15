@@ -160,10 +160,11 @@
                 android:resource="@xml/searchable" />
         </activity>
 
+        <!-- KMK -->
         <activity
             android:name=".ui.reader.ReaderActivity"
             android:exported="false"
-            android:launchMode="singleTask">
+            android:launchMode="standard">
             <intent-filter>
                 <action android:name="com.samsung.android.support.REMOTE_ACTION" />
             </intent-filter>
@@ -172,6 +173,7 @@
                 android:name="com.samsung.android.support.REMOTE_ACTION"
                 android:resource="@xml/s_pen_actions" />
         </activity>
+        <!-- KMK -->
 
         <activity
             android:name=".ui.security.UnlockActivity"

@@ -35,10 +35,10 @@ Komiyomi Ext is the extension-enabled app in the Komiyomi family. For a dedicate
 ## Features
 
 - **Sources and discovery:** Browse and read from compatible extensions, search across sources, save searches, and view feeds and recommendations.
-- **Local CBZ/CBR library:** Scan a custom folder, including nested folders, and read archives in place. Track progress and favorites, browse in grid or list view, and filter or sort your collection.
+- **Local CBZ/CBR library:** Scan a custom folder, including nested folders, and read archives in place. Group multi-part archives as a series, cache scan results, track progress and favorites, and browse with grid or list view, search, filters, and sorting.
 - **Large CBZ reading:** Use a cached archive index and load pages from the archive as needed, which can speed later opens of large files.
 - **Downloads:** Download chapters in the background, set concurrent download limits, or queue every chapter of a manga. Optionally save downloaded chapters as CBZ files.
-- **Reader controls:** Choose reading direction and viewer modes, adjust page loading, bookmark pages, and navigate by chapter, section, or page.
+- **Reader controls:** Choose reading direction and viewer modes, adjust page loading, bookmark pages, and navigate by chapter, section, or page. Keep multiple manga readers open as separate Android tasks, and use optional Smart Resume to continue at the next chapter after a configurable completion threshold.
 - **Library tools:** Organize entries with categories, tags, filters, and saved searches; use batch actions and source migration.
 - **Tracking and backups:** Sync reading progress with supported trackers and back up your library and settings.
 - **Personalization:** Use light, dark, and custom themes, including colors based on a manga's cover.

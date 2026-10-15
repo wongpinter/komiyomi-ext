@@ -215,9 +215,53 @@ object SettingsReaderScreen : SearchableSettings {
 
     @Composable
     private fun getReadingGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
+        // KMK -->
+        val smartResumeEnabled by readerPreferences.smartResumeEnabled().collectAsState()
+        val smartResumeMode by readerPreferences.smartResumeMode().collectAsState()
+        val smartResumePercentage by readerPreferences.smartResumePercentage().collectAsState()
+        val smartResumePagesRemaining by readerPreferences.smartResumePagesRemaining().collectAsState()
+        // KMK <--
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_reading),
             preferenceItems = persistentListOf(
+                // KMK -->
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.readerMultiTask(),
+                    title = stringResource(KMR.strings.pref_reader_multitask),
+                    subtitle = stringResource(KMR.strings.pref_reader_multitask_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.smartResumeEnabled(),
+                    title = stringResource(KMR.strings.pref_smart_resume),
+                    subtitle = stringResource(KMR.strings.pref_smart_resume_summary),
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = readerPreferences.smartResumeMode(),
+                    entries = ReaderPreferences.SmartResumeMode.entries
+                        .associateWith { stringResource(it.titleRes) }
+                        .toImmutableMap(),
+                    title = stringResource(KMR.strings.pref_smart_resume_mode),
+                    enabled = smartResumeEnabled,
+                ),
+                if (smartResumeMode == ReaderPreferences.SmartResumeMode.PERCENTAGE) {
+                    Preference.PreferenceItem.SliderPreference(
+                        value = smartResumePercentage,
+                        valueRange = 1..100,
+                        title = stringResource(KMR.strings.pref_smart_resume_percentage),
+                        valueString = "$smartResumePercentage%",
+                        enabled = smartResumeEnabled,
+                        onValueChanged = { readerPreferences.smartResumePercentage().set(it) },
+                    )
+                } else {
+                    Preference.PreferenceItem.SliderPreference(
+                        value = smartResumePagesRemaining,
+                        valueRange = 0..20,
+                        title = stringResource(KMR.strings.pref_smart_resume_pages_remaining),
+                        enabled = smartResumeEnabled,
+                        onValueChanged = { readerPreferences.smartResumePagesRemaining().set(it) },
+                    )
+                },
+                // KMK <--
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.skipRead(),
                     title = stringResource(MR.strings.pref_skip_read_chapters),

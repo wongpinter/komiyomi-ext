@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.MenuBook
@@ -50,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,6 +109,13 @@ class LocalArchiveScreen(
         val folderPicker = SettingsDataScreen.storageLocationPicker(storagePreferences.localSourceDirectory())
         // KMK <--
         var query by rememberSaveable { mutableStateOf("") }
+        // KMK -->
+        var searchVisible by rememberSaveable { mutableStateOf(false) }
+        val searchFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(searchVisible) {
+            if (searchVisible) searchFocusRequester.requestFocus()
+        }
+        // KMK <--
         val libraryPreferences = remember { OfflineLibraryPreferences() }
         val sortPreference = remember { libraryPreferences.sort() }
         val descendingPreference = remember { libraryPreferences.descending() }
@@ -268,6 +278,23 @@ class LocalArchiveScreen(
                         null
                     },
                     actions = {
+                        // KMK -->
+                        IconButton(
+                            onClick = {
+                                if (searchVisible) {
+                                    query = ""
+                                    searchVisible = false
+                                } else {
+                                    searchVisible = true
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = if (searchVisible) Icons.Outlined.Close else Icons.Outlined.Search,
+                                contentDescription = stringResource(if (searchVisible) MR.strings.action_close else MR.strings.action_search),
+                            )
+                        }
+                        // KMK <--
                         if (showSeries) {
                             IconButton(onClick = { navigator.push(LocalArchiveScreen(recursive = false)) }) {
                                 Icon(Icons.Outlined.Folder, stringResource(KMR.strings.offline_folders_tab))
@@ -293,14 +320,30 @@ class LocalArchiveScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    singleLine = true,
-                    label = { Text(stringResource(MR.strings.action_search)) },
-                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                )
+                // KMK -->
+                if (searchVisible) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        modifier = Modifier
+                            .focusRequester(searchFocusRequester)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        singleLine = true,
+                        label = { Text(stringResource(MR.strings.action_search)) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                        trailingIcon = if (query.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { query = "" }) {
+                                    Icon(Icons.Outlined.Close, stringResource(MR.strings.action_close))
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
+                // KMK <--
                 if (state.scanning || state.opening != null || state.metadataLoading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }

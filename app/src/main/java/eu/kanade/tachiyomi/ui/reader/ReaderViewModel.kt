@@ -495,6 +495,9 @@ class ReaderViewModel @JvmOverloads constructor(
                         // SY -->
                         page,
                         // SY <--
+                        // KMK -->
+                        allowSmartResume = true,
+                        // KMK <--
                     )
                     Result.success(true)
                 } else {
@@ -542,15 +545,36 @@ class ReaderViewModel @JvmOverloads constructor(
         // SY -->
         page: Int? = null,
         // SY <--
+        // KMK -->
+        allowSmartResume: Boolean = false,
+        // KMK <--
     ): ViewerChapters {
         loader.loadChapter(chapter /* SY --> */, page/* SY <-- */)
 
-        val chapterPos = chapterList.indexOf(chapter)
+        // KMK -->
+        var activeChapter = chapter
+        if (allowSmartResume && page == null) {
+            val nextChapter = findSmartResumeNextChapter(chapter)
+            if (nextChapter != null) {
+                try {
+                    loader.loadChapter(nextChapter, page = 0)
+                    nextChapter.requestedPage = 0
+                    activeChapter = nextChapter
+                    chapterId = nextChapter.chapter.id!!
+                    chapterPageIndex = 0
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    logcat(LogPriority.ERROR, e)
+                }
+            }
+        }
+        val chapterPos = chapterList.indexOfFirst { it.chapter.id == activeChapter.chapter.id }
         val newChapters = ViewerChapters(
-            chapter,
+            activeChapter,
             chapterList.getOrNull(chapterPos - 1),
             chapterList.getOrNull(chapterPos + 1),
         )
+        // KMK <--
 
         withUIContext {
             mutableState.update {
@@ -567,6 +591,38 @@ class ReaderViewModel @JvmOverloads constructor(
         }
         return newChapters
     }
+
+    // KMK -->
+    private suspend fun findSmartResumeNextChapter(chapter: ReaderChapter): ReaderChapter? {
+        if (!readerPreferences.smartResumeEnabled().get() || incognitoMode || chapterPageIndex >= 0) return null
+
+        val mangaId = chapter.chapter.manga_id ?: return null
+        val latestHistory = Injekt.get<tachiyomi.domain.history.interactor.GetHistory>().await(mangaId)
+            .maxByOrNull { it.readAt?.time ?: Long.MIN_VALUE }
+            ?: return null
+        if (latestHistory.readAt == null || latestHistory.chapterId != chapter.chapter.id) return null
+
+        val pageCount = chapter.pages?.size ?: return null
+        val lastPageRead = chapter.chapter.last_page_read
+        if (lastPageRead !in 0 until pageCount) return null
+
+        val completed = when (readerPreferences.smartResumeMode().get()) {
+            ReaderPreferences.SmartResumeMode.PERCENTAGE -> {
+                val percentage = readerPreferences.smartResumePercentage().get().coerceIn(1, 100)
+                (lastPageRead.toLong() + 1) * 100 >= percentage.toLong() * pageCount
+            }
+            ReaderPreferences.SmartResumeMode.PAGES_REMAINING -> {
+                val pagesRemaining = readerPreferences.smartResumePagesRemaining().get().coerceAtLeast(0)
+                pageCount - lastPageRead - 1 <= pagesRemaining
+            }
+        }
+        if (!completed) return null
+
+        val chapterIndex = chapterList.indexOfFirst { it.chapter.id == chapter.chapter.id }
+        if (chapterIndex < 0) return null
+        return chapterList.getOrNull(chapterIndex + 1)
+    }
+    // KMK <--
 
     /**
      * Called when the user changed to the given [chapter] when changing pages from the viewer.
@@ -905,6 +961,19 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private fun isArchiveChapter(chapter: ReaderChapter): Boolean =
         listOf(".cbz", ".cbr", ".zip", ".rar").any { chapter.chapter.url.endsWith(it, ignoreCase = true) }
+
+    fun canAutoAdvanceToNextLocalArchive(from: ReaderChapter, to: ReaderChapter?): Boolean {
+        val loadedManga = manga ?: return false
+        val nextChapter = to ?: return false
+        if (!loadedManga.isLocal() || from.chapter.manga_id != nextChapter.chapter.manga_id) return false
+        if (!isArchiveChapter(from) || !isArchiveChapter(nextChapter)) return false
+
+        fun parentPath(chapter: ReaderChapter): String = chapter.chapter.url
+            .replace('\\', '/')
+            .substringBeforeLast('/', missingDelimiterValue = "")
+
+        return parentPath(from) == parentPath(nextChapter)
+    }
     // KMK <--
 
     private suspend fun updateChapterProgressOnComplete(readerChapter: ReaderChapter) {

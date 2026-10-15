@@ -447,7 +447,18 @@ class LocalArchiveScreenModel(
                     val siblingPaths = orderedEntries.map { it.path }.toSet()
                     val existingManga = getManga.await(mangaPath, LocalSource.ID)
                     val existingChapters = existingManga?.let { getChapters.await(it.id) }.orEmpty()
-                    if (existingManga != null && siblingPaths.all { path -> existingChapters.any { it.url == path } }) {
+                    // KMK -->
+                    val expectedSourceOrder = orderedEntries.asReversed()
+                        .mapIndexed { index, sibling -> sibling.path to index.toLong() }
+                        .toMap()
+                    val existingChaptersByPath = existingChapters.associateBy { it.url }
+                    val existingChaptersMatchOrder =
+                        existingChapters.size == expectedSourceOrder.size &&
+                            expectedSourceOrder.all { (path, sourceOrder) ->
+                                existingChaptersByPath[path]?.sourceOrder == sourceOrder
+                            }
+                    // KMK <--
+                    if (existingManga != null && existingChaptersMatchOrder) {
                         val chapter = existingChapters.first { it.url == entry.path }
                         return@withIOContext existingManga.id to chapter.id
                     }
@@ -469,13 +480,20 @@ class LocalArchiveScreenModel(
                     }
                     val manga = networkToLocalManga((sourceUpdate?.manga ?: rawManga).toDomainManga(LocalSource.ID))
                     val sourceChapters = sourceUpdate?.chapters.orEmpty().associateBy { it.url }
-                    val chapters = orderedEntries.mapIndexed { index, sibling ->
+                    // KMK -->
+                    // The reader reverses source order to navigate from older to newer chapters.
+                    val chapters = orderedEntries.asReversed().mapIndexed { reverseIndex, sibling ->
+                        // KMK <--
                         sourceChapters[sibling.path] ?: SChapter.create().apply {
                             val archiveMetadata = state.value.metadata[sibling.identity]
                             url = sibling.path
                             name = archiveMetadata?.chapterTitle?.takeIf { it.isNotBlank() } ?: sibling.title
                             chapter_number = archiveMetadata?.number?.toFloatOrNull()
-                                ?: ChapterRecognition.parseChapterNumber(mangaTitle, name, (index + 1).toDouble()).toFloat()
+                                ?: ChapterRecognition.parseChapterNumber(
+                                    mangaTitle,
+                                    name,
+                                    (orderedEntries.size - reverseIndex).toDouble(),
+                                ).toFloat()
                             date_upload = sibling.modified
                         }
                     }
