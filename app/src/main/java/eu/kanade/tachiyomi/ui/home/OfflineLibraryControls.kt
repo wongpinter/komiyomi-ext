@@ -30,10 +30,16 @@ import tachiyomi.presentation.core.i18n.stringResource
 internal fun OfflineLibraryControls(
     status: OfflineReadingFilter,
     favoritesOnly: Boolean,
+    // KMK -->
+    duplicatesOnly: Boolean,
+    // KMK <--
     listView: Boolean,
     coverSize: Int,
     onStatus: (OfflineReadingFilter) -> Unit,
     onFavoritesOnly: (Boolean) -> Unit,
+    // KMK -->
+    onDuplicatesOnly: (Boolean) -> Unit,
+    // KMK <--
     onListView: (Boolean) -> Unit,
     onCoverSize: (Int) -> Unit,
 ) {
@@ -46,6 +52,11 @@ internal fun OfflineLibraryControls(
         item {
             FilterChip(selected = favoritesOnly, onClick = { onFavoritesOnly(!favoritesOnly) }, label = { Text(stringResource(KMR.strings.offline_favorites)) })
         }
+        // KMK -->
+        item {
+            FilterChip(selected = duplicatesOnly, onClick = { onDuplicatesOnly(!duplicatesOnly) }, label = { Text(stringResource(KMR.strings.offline_duplicates)) })
+        }
+        // KMK <--
         item {
             IconButton(onClick = { onListView(!listView) }) {
                 Icon(if (listView) Icons.Outlined.GridView else Icons.Outlined.ViewList, stringResource(if (listView) KMR.strings.offline_grid_view else KMR.strings.offline_list_view))

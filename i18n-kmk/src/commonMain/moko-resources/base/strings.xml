@@ -181,7 +181,18 @@
     <string name="offline_choose_folder">Choose local folder</string>
     <string name="offline_rescan">Rescan folder</string>
     <string name="offline_scan_progress">Scanning %1$d folders · %2$d archives</string>
+    <!-- KMK -->
+    <string name="offline_metadata_loading">Reading archive details %1$d / %2$d</string>
+    <string name="offline_last_scan">Last scanned %1$s</string>
+    <string name="offline_duplicates">Duplicates</string>
+    <string name="offline_duplicate_copies">Exact duplicate · %1$d copies</string>
+    <string name="offline_series_summary">%1$d chapters · %2$d read · %3$d unread</string>
+    <string name="offline_series_continue">Continue series</string>
+    <!-- KMK -->
     <string name="offline_entry_count">%1$d archives · %2$d folders</string>
+    <string name="offline_series_count">%1$d manga · %2$d archives</string>
+    <string name="offline_series_chapters">%1$d chapters</string>
+    <string name="offline_series_progress">%1$d / %2$d chapters started</string>
     <string name="offline_unreadable_folders">%1$d folders could not be read</string>
     <string name="offline_open_failed">Could not open this archive</string>
     <string name="offline_folder_unavailable">The local folder is unavailable</string>

@@ -27,15 +27,14 @@ actual class LocalSourceFileSystem(
     }
 
     actual fun getMangaDirectory(name: String): UniFile? {
-        return getBaseDirectory()
-            ?.findFile(name)
-            ?.takeIf { it.isDirectory }
+        // KMK -->
+        return resolveFile(name)?.takeIf { it.isDirectory }
+        // KMK <--
     }
 
     actual fun getFilesInMangaDirectory(name: String): List<UniFile> {
-        return getBaseDirectory()
-            ?.findFile(name)
-            ?.takeIf { it.isDirectory }
-            ?.listFiles().orEmpty().toList()
+        // KMK -->
+        return getMangaDirectory(name)?.listFiles().orEmpty().toList()
+        // KMK <--
     }
 }

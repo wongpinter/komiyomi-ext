@@ -11,6 +11,9 @@ internal class OfflineLibraryPreferences(private val store: PreferenceStore = In
     fun favorites() = store.getStringSet("offline_library_favorites", emptySet())
     fun status() = store.getString("offline_library_status", "ALL")
     fun favoritesOnly() = store.getBoolean("offline_library_favorites_only", false)
+    // KMK -->
+    fun duplicatesOnly() = store.getBoolean("offline_library_duplicates_only", false)
+    // KMK <--
     fun listView() = store.getBoolean("offline_library_list_view", false)
     fun coverSize() = store.getInt("offline_library_cover_size", 128)
 }

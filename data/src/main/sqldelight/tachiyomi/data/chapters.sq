@@ -104,7 +104,7 @@ getArchiveReadingProgress:
 SELECT
     C._id AS chapterId,
     C.manga_id AS mangaId,
-    M.url AS path,
+    C.url AS path,
     C.read AS completed,
     C.last_page_read AS lastPage,
     C.last_modified_at AS lastRead,

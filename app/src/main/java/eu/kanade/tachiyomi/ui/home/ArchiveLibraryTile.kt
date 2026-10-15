@@ -62,6 +62,9 @@ internal fun ArchiveLibraryTile(
     model: LocalArchiveScreenModel,
     revision: Int,
     modifier: Modifier = Modifier,
+    // KMK -->
+    duplicateCopies: Int = 0,
+    // KMK <--
 ) {
     Column(modifier.clickable(enabled = enabled, onClick = onOpen)) {
         Box {
@@ -73,9 +76,48 @@ internal fun ArchiveLibraryTile(
             Text(entry.parentPath, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(archiveProgressLabel(progress), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        // KMK -->
+        if (duplicateCopies > 1) {
+            Text(stringResource(KMR.strings.offline_duplicate_copies, duplicateCopies), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+        // KMK <--
         if (progress?.started == true && progress.pageCount > 0) {
             LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
         }
+    }
+}
+
+@Composable
+internal fun ArchiveSeriesTile(
+    series: OfflineArchiveSeries,
+    progress: Map<String, ArchiveReadingProgress>,
+    favorite: Boolean,
+    onFavorite: () -> Unit,
+    onOpen: () -> Unit,
+    enabled: Boolean,
+    model: LocalArchiveScreenModel,
+    revision: Int,
+    modifier: Modifier = Modifier,
+    // KMK -->
+    duplicateCopies: Int = 0,
+    // KMK <--
+) {
+    Column(modifier.clickable(enabled = enabled, onClick = onOpen)) {
+        Box {
+            ArchiveCover(series.firstEntry, model, revision, Modifier.fillMaxWidth())
+            FavoriteButton(favorite, Modifier.align(Alignment.TopEnd).padding(4.dp), onFavorite)
+        }
+        Text(series.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+        Text(
+            stringResource(KMR.strings.offline_series_progress, series.entries.count { progress[it.path]?.started == true }, series.entries.size),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        // KMK -->
+        if (duplicateCopies > 0) {
+            Text(stringResource(KMR.strings.offline_duplicate_copies, duplicateCopies), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+        }
+        // KMK <--
     }
 }
 

@@ -31,15 +31,16 @@ internal class LocalArchiveCatalogCache(
     private val file = AtomicFile(File(context.filesDir, "local-archive-catalogs/$key"))
     private val mutex = cacheMutex
 
-    suspend fun load(): LocalArchiveScan? = withIOContext {
+    // KMK -->
+    suspend fun load(): OfflineLibraryCatalogSnapshot? = withIOContext {
+        // KMK <--
         mutex.withLock {
             val input = try {
                 file.openRead()
             } catch (_: FileNotFoundException) {
                 return@withLock null
             }
-            val age = System.currentTimeMillis() - file.baseFile.lastModified()
-            if (file.baseFile.length() > MAX_CACHE_BYTES || age > MAX_CACHE_AGE_MS) {
+            if (file.baseFile.length() > MAX_CATALOG_BYTES) {
                 input.close()
                 file.delete()
                 return@withLock null
@@ -48,6 +49,9 @@ internal class LocalArchiveCatalogCache(
                 check(stream.readInt() == VERSION) { "Unsupported catalog version" }
                 val foldersScanned = stream.readInt()
                 val unreadableFolders = stream.readInt()
+                // KMK -->
+                val scannedAt = stream.readLong()
+                // KMK <--
                 val count = stream.readInt()
                 check(foldersScanned >= 0 && unreadableFolders >= 0 && count >= 0) { "Invalid catalog counts" }
                 val entries = mutableListOf<LocalArchiveEntry>()
@@ -62,14 +66,39 @@ internal class LocalArchiveCatalogCache(
                     val archive = checkNotNull(UniFile.fromUri(context, uri)) { "Invalid archive URI" }
                     entries.add(LocalArchiveEntry(entryPath, archive, name, isDirectory, size, modified))
                 }
-                LocalArchiveScan(entries, foldersScanned, unreadableFolders, complete = true)
+                // KMK -->
+                val metadataCount = stream.readInt()
+                check(metadataCount >= 0) { "Invalid metadata count" }
+                val metadata = buildMap {
+                    repeat(metadataCount) {
+                        currentCoroutineContext().ensureActive()
+                        val identity = stream.readUTF()
+                        put(
+                            identity,
+                            OfflineArchiveMetadata(
+                                series = stream.readNullableString(),
+                                number = stream.readNullableString(),
+                                chapterTitle = stream.readNullableString(),
+                                contentHash = stream.readNullableString(),
+                            ),
+                        )
+                    }
+                }
+                OfflineLibraryCatalogSnapshot(
+                    scan = LocalArchiveScan(entries, foldersScanned, unreadableFolders, complete = true, scannedAt),
+                    metadata = metadata,
+                )
+                // KMK <--
             }
-            runCatching(::trimCache)
+            file.baseFile.setLastModified(System.currentTimeMillis())
+            runCatching { trimCache(file.baseFile) }
             cachedScan
         }
     }
 
-    suspend fun save(scan: LocalArchiveScan) = withIOContext {
+    // KMK -->
+    suspend fun save(scan: LocalArchiveScan, metadata: Map<String, OfflineArchiveMetadata>) = withIOContext {
+        // KMK <--
         require(scan.complete)
         mutex.withLock {
             val output = file.startWrite()
@@ -78,6 +107,9 @@ internal class LocalArchiveCatalogCache(
                 stream.writeInt(VERSION)
                 stream.writeInt(scan.foldersScanned)
                 stream.writeInt(scan.unreadableFolders)
+                // KMK -->
+                stream.writeLong(scan.scannedAt)
+                // KMK <--
                 stream.writeInt(scan.entries.size)
                 for (entry in scan.entries) {
                     currentCoroutineContext().ensureActive()
@@ -88,10 +120,21 @@ internal class LocalArchiveCatalogCache(
                     stream.writeLong(entry.size)
                     stream.writeLong(entry.modified)
                 }
+                // KMK -->
+                stream.writeInt(metadata.size)
+                metadata.forEach { (identity, details) ->
+                    currentCoroutineContext().ensureActive()
+                    stream.writeUTF(identity)
+                    stream.writeNullableString(details.series)
+                    stream.writeNullableString(details.number)
+                    stream.writeNullableString(details.chapterTitle)
+                    stream.writeNullableString(details.contentHash)
+                }
+                // KMK <--
                 stream.flush()
                 currentCoroutineContext().ensureActive()
                 file.finishWrite(output)
-                runCatching(::trimCache)
+                runCatching { trimCache(file.baseFile) }
             } catch (error: Throwable) {
                 file.failWrite(output)
                 throw error
@@ -99,24 +142,46 @@ internal class LocalArchiveCatalogCache(
         }
     }
 
-    private fun trimCache() {
+    private fun trimCache(preserve: File? = null) {
         val directory = file.baseFile.parentFile ?: return
         val now = System.currentTimeMillis()
         val cacheFiles = directory.listFiles()?.filter { it.isFile } ?: return
-        cacheFiles.filter { now - it.lastModified() > MAX_CACHE_AGE_MS }.forEach(File::delete)
+        cacheFiles
+            .filter { it != preserve && now - it.lastModified() > MAX_UNUSED_CACHE_AGE_MS }
+            .forEach(File::delete)
         var totalBytes = cacheFiles.filter { it.exists() }.sumOf { it.length() }
-        cacheFiles.filter { it.exists() }.sortedBy { it.lastModified() }.forEach { cachedFile ->
-            if (totalBytes <= MAX_CACHE_BYTES) return
-            val size = cachedFile.length()
-            if (cachedFile.delete()) totalBytes -= size
-        }
+        cacheFiles
+            .filter { it.exists() && it != preserve }
+            .sortedBy { it.lastModified() }
+            .forEach { cachedFile ->
+                if (totalBytes <= MAX_CACHE_BYTES) return
+                val size = cachedFile.length()
+                if (cachedFile.delete()) totalBytes -= size
+            }
     }
 
     private companion object {
-        const val VERSION = 1
-        const val MAX_CACHE_AGE_MS = 24L * 60 * 60 * 1000
+        // KMK -->
+        const val VERSION = 2
+        // KMK <--
+        const val MAX_UNUSED_CACHE_AGE_MS = 30L * 24 * 60 * 60 * 1000
         const val MAX_CACHE_BYTES = 64L * 1024 * 1024
+        const val MAX_CATALOG_BYTES = 512L * 1024 * 1024
         val cacheMutex = Mutex()
     }
 }
+
+// KMK -->
+internal data class OfflineLibraryCatalogSnapshot(
+    val scan: LocalArchiveScan,
+    val metadata: Map<String, OfflineArchiveMetadata>,
+)
+
+private fun DataInputStream.readNullableString(): String? = if (readBoolean()) readUTF() else null
+
+private fun DataOutputStream.writeNullableString(value: String?) {
+    writeBoolean(value != null)
+    if (value != null) writeUTF(value)
+}
+// KMK <--
 // KMK <--

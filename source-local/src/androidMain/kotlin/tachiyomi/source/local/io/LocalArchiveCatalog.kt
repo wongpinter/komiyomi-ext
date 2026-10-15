@@ -29,6 +29,9 @@ data class LocalArchiveScan(
     val foldersScanned: Int,
     val unreadableFolders: Int,
     val complete: Boolean,
+    // KMK -->
+    val scannedAt: Long = 0L,
+    // KMK <--
 )
 
 /** Lists metadata only. Archive contents and cover images are loaded separately. */
@@ -86,7 +89,9 @@ class LocalArchiveCatalog(private val fileSystem: LocalSourceFileSystem) {
                 lastPublishedSize = entries.size
             }
         }
-        emit(LocalArchiveScan(entries.toList(), foldersScanned, unreadableFolders, true))
+        // KMK -->
+        emit(LocalArchiveScan(entries.toList(), foldersScanned, unreadableFolders, true, System.currentTimeMillis()))
+        // KMK <--
     }.flowOn(Dispatchers.IO)
 
     private fun resolveDirectory(path: String): UniFile? {
