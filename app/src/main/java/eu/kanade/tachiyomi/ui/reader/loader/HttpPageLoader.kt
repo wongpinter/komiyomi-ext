@@ -213,13 +213,13 @@ internal class HttpPageLoader(
         try {
             if (page.imageUrl.isNullOrEmpty()) {
                 page.status = Page.State.LoadPage
-                page.imageUrl = source.getImageUrl(page)
+                page.imageUrl = retryNetworkRequest { source.getImageUrl(page) }
             }
             val imageUrl = page.imageUrl!!
 
             if (!chapterCache.isImageInCache(imageUrl)) {
                 page.status = Page.State.DownloadImage
-                val imageResponse = source.getImage(page, dataSaver)
+                val imageResponse = retryNetworkRequest { source.getImage(page, dataSaver) }
                 chapterCache.putImageToCache(imageUrl, imageResponse)
             }
 
@@ -242,7 +242,37 @@ internal class HttpPageLoader(
         }
     }
     // EXH <--
+
+    // KMK -->
+    private suspend fun <T> retryNetworkRequest(request: suspend () -> T): T {
+        var retries = 0
+        while (true) {
+            try {
+                return request()
+            } catch (error: Throwable) {
+                if (error is CancellationException || !error.isRetryablePageLoadFailure() || retries >= AUTOMATIC_RETRY_COUNT) {
+                    throw error
+                }
+
+                kotlinx.coroutines.delay(AUTOMATIC_RETRY_BASE_DELAY_MS * (1L shl retries))
+                retries++
+            }
+        }
+    }
+    // KMK <--
 }
+
+// KMK -->
+private const val AUTOMATIC_RETRY_COUNT = 3
+private const val AUTOMATIC_RETRY_BASE_DELAY_MS = 1_000L
+
+private fun Throwable.isRetryablePageLoadFailure(): Boolean =
+    when (this) {
+        is java.io.IOException -> true
+        is eu.kanade.tachiyomi.network.HttpException -> code == 408 || code == 429 || code in 500..599
+        else -> false
+    }
+// KMK <--
 
 /**
  * Data class used to keep ordering of pages in order to maintain priority.
