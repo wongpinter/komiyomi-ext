@@ -2,9 +2,9 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- KMK -->
     <item
-        android:width="72dp"
-        android:height="72dp"
-        android:drawable="@drawable/ic_komiyomi_ext_logo"
+        android:width="108dp"
+        android:height="108dp"
+        android:drawable="@drawable/ic_komiyomi_ext_launcher_fullcolor"
         android:gravity="center" />
     <!-- KMK -->
 </layer-list>

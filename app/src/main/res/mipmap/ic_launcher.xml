@@ -2,7 +2,7 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- KMK -->
     <background android:drawable="@drawable/ic_komiyomi_ext_background"/>
-    <foreground android:drawable="@drawable/ic_komiyomi_ext_foreground"/>
-    <monochrome android:drawable="@drawable/ic_komiyomi_ext_monochrome"/>
+    <foreground android:drawable="@drawable/ic_komiyomi_ext_launcher_fullcolor"/>
+    <monochrome android:drawable="@drawable/ic_komiyomi_ext_launcher_monochrome"/>
     <!-- KMK -->
 </adaptive-icon>
