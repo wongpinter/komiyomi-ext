@@ -83,12 +83,14 @@ class GetApplicationRelease(
         // Removes prefixes like "r" or "v"
         val newVersion = versionTag.replace("[^\\d.]".toRegex(), "")
         return if (isPreview) {
-            // Preview builds: based on releases in "komikku-app/komikku-preview" repo
-            // tagged as something like "r1234"
+            // KMK -->
+            // Preview builds use this project's releases, tagged as something like "r1234".
+            // KMK <--
             newVersion.toInt() > commitCount
         } else {
-            // Release builds: based on releases in "komikku-app/komikku" repo
-            // tagged as something like "v0.1.2"
+            // KMK -->
+            // Release builds use this project's releases, tagged as something like "v0.1.2".
+            // KMK <--
             val oldVersion = versionName.replace("[^\\d.]".toRegex(), "")
 
             val newSemVer = newVersion.split(".").map { it.toInt() }

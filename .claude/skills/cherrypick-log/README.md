@@ -26,9 +26,9 @@ python3 .claude/skills/cherrypick-log/update_cherrypick_log.py mark 1a2b3c4d --s
 python3 .claude/skills/cherrypick-log/update_cherrypick_log.py mark 5e6f7a8b --status X --note "SY-only release bump"
 ```
 
-The upstream remotes named in `config.json` must exist. In Komikku these are `git remote add mihon https://github.com/mihonapp/mihon`
+The upstream remotes named in `config.json` must exist. In this repository these are `git remote add mihon https://github.com/mihonapp/mihon`
 and `git remote add tachiyomiSY https://github.com/jobobby04/TachiyomiSY`. The script fetches them itself
-unless you pass `--no-fetch`.
+unless you pass `--no-fetch`. This log tracks upstream changes; it does not imply product affiliation.
 
 ## Commands
 
@@ -66,8 +66,8 @@ Only **Status** and **Notes** are yours to edit. Every other cell, the order of 
 
 ### Pairing SY commits with mihon commits
 
-`main_upstream` in `config.json` is the **primary** one (mihon in Komikku). Each entry of `additional_upstreams`
-is a **secondary** (tachiyomiSY in Komikku), and each secondary is interleaved with the primary on its own.
+`main_upstream` in `config.json` is the **primary** one (Mihon in Komiyomi Ext). Each entry of `additional_upstreams`
+is a **secondary** (TachiyomiSY in Komiyomi Ext), and each secondary is interleaved with the primary on its own.
 A secondary commit is a copy of a primary commit if one of these applies, checked in this order (shown as Details `pick of mihon … [method]`):
 
 1. `marker`: its message has `cherry picked from commit <primary hash>`.
@@ -140,7 +140,7 @@ templates). Their note is `AI checked <date>: omitted - version bump only (<file
 - If a commit is no longer reachable from its upstream branch (force-push), it moves to a **Gone from upstream** section
   and keeps its status and notes. Delete it by hand once you no longer need it.
 - Rows dated **before `since`** that are already in the file stay at the end of the list, unchanged, in their current
-  order. These were added by a one-off pass over older history (in Komikku: the mihon commits before its `since` that
+  order. These were added by a one-off pass over older history (in this repository: the Mihon commits before its configured `since` that
   SY never picked, whose Details start with `pre-<since>`). An empty or `?` row there only changes to `O`, when new `O`
   evidence appears. You may delete such rows by hand; they are not re-added, and the summary simply counts the rows
   that are in the file.
@@ -152,9 +152,9 @@ templates). Their note is `AI checked <date>: omitted - version bump only (<file
 | Key | Meaning |
 |-----|---------|
 | `target_branch` | Branch to check for already-picked commits (`master`) |
-| `since` | First commit date to include, `YYYY-MM-DD` (committer date). Required, and specific to each repo (Komikku: `2024-01-01`); `--since` overrides it |
+| `since` | First commit date to include, `YYYY-MM-DD` (committer date). Required, and specific to each repo; `--since` overrides it |
 | `output` | Output Markdown path, relative to the repo root (or absolute) |
-| `exclude_identity_regex` | Case-insensitive regex matched against author, committer and co-authors (Komikku: `renovate`). Empty = exclude nothing |
+| `exclude_identity_regex` | Case-insensitive regex matched against author, committer and co-authors (for example, `renovate`). Empty = exclude nothing |
 | `main_upstream` | `{name, remote, branch, github}` of the main upstream. Its commits set the order of the list. Required |
 | `additional_upstreams` | List of one or more `{name, remote, branch, github}`. Their commits are paired with, and interleaved into, the main upstream's. Names must be unique |
 
@@ -168,7 +168,7 @@ Tuning constants (similarity threshold, date limits, minimum title words) are at
 3. Add the remotes (`git remote add <name> <url>`) and run the script.
 4. Search `README.md` and `SKILL.md` for project-specific wording (mihon, SY, `// KMK` markers, `AGENTS.md`) and adjust it.
 
-The same applies to Komikku's sibling forks. The only hard requirement is that the fork records upstream picks
+The same applies to other forks. The only hard requirement is that the repository records upstream picks
 with `git cherry-pick -x` (`cherry picked from commit …`) or `owner/repo#N` references in commit titles.
 
 ## Tests

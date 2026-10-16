@@ -26,10 +26,14 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.komikku"
+        // KMK -->
+        applicationId = "com.wongpinter.komiyomi.ext"
+        // KMK <--
 
-        versionCode = 82
-        versionName = "1.14.1"
+        // KMK -->
+        versionCode = 83
+        versionName = "1.0.0"
+        // KMK <--
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")

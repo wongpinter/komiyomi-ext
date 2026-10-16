@@ -10,8 +10,10 @@ object TelemetryConfig {
     private var crashlytics: FirebaseCrashlytics? = null
 
     fun init(context: Context, isPreviewBuildType: Boolean, commitCount: String) {
-        // To stop forks/test builds from polluting our data
-        if (!context.isMihonProductionApp()) return
+        // KMK -->
+        // Only project release and preview packages send this project's telemetry.
+        if (!context.isKomiyomiProductionApp()) return
+        // KMK <--
 
         analytics = FirebaseAnalytics.getInstance(context)
         FirebaseApp.initializeApp(context)
@@ -31,15 +33,14 @@ object TelemetryConfig {
         crashlytics?.isCrashlyticsCollectionEnabled = enabled
     }
 
-    private fun Context.isMihonProductionApp(): Boolean {
-        if (packageName !in MIHON_PACKAGES) return false
-
-        return packageManager.getPackageInfo(packageName, SignatureFlags)
-            .getCertificateFingerprints()
-            .any { it == MIHON_CERTIFICATE_FINGERPRINT }
-    }
+    // KMK -->
+    private fun Context.isKomiyomiProductionApp(): Boolean = packageName in KOMIYOMI_PACKAGES
+    // KMK <--
 }
 
-private val MIHON_PACKAGES = hashSetOf("app.komikku", "app.komikku.beta")
-private const val MIHON_CERTIFICATE_FINGERPRINT =
-    "CB:EC:12:1A:A8:2E:BB:02:AA:A7:38:06:99:2E:03:68:A9:7D:47:B5:45:1E:D6:52:48:16:D0:30:84:C4:59:05"
+// KMK -->
+private val KOMIYOMI_PACKAGES = hashSetOf(
+    "com.wongpinter.komiyomi.ext",
+    "com.wongpinter.komiyomi.ext.beta",
+)
+// KMK <--

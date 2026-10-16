@@ -51,7 +51,9 @@ class ConnectionsPreferences(
 
     fun discordShowDownloadButton() = preferenceStore.getBoolean("pref_discord_show_download_button", true)
 
-    fun discordShowDiscordButton() = preferenceStore.getBoolean("pref_discord_show_discord_button", true)
+    // KMK -->
+    fun discordShowWebsiteButton() = preferenceStore.getBoolean("pref_discord_show_website_button", true)
+    // KMK <--
 
     fun discordAccounts() = preferenceStore.getString("discord_accounts", "")
 

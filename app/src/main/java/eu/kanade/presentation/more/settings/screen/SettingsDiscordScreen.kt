@@ -77,7 +77,9 @@ object SettingsDiscordScreen : SearchableSettings {
         val showTimestampPref = connectionsPreferences.discordShowTimestamp()
         val showButtonsPref = connectionsPreferences.discordShowButtons()
         val showDownloadButtonPref = connectionsPreferences.discordShowDownloadButton()
-        val showDiscordButtonPref = connectionsPreferences.discordShowDiscordButton()
+        // KMK -->
+        val showWebsiteButtonPref = connectionsPreferences.discordShowWebsiteButton()
+        // KMK <--
         val showProgressEnabled by showProgressPref.collectAsState()
 
         val enableDRPC by enableDRPCPref.collectAsState()
@@ -168,6 +170,10 @@ object SettingsDiscordScreen : SearchableSettings {
                     Preference.PreferenceItem.SwitchPreference(
                         preference = enableDRPCPref,
                         title = stringResource(KMR.strings.pref_enable_discord_rpc),
+                        // KMK -->
+                        subtitle = stringResource(KMR.strings.discord_rpc_unavailable),
+                        enabled = false,
+                        // KMK <--
                     ),
                     Preference.PreferenceItem.ListPreference(
                         preference = discordRPCStatus,
@@ -222,9 +228,9 @@ object SettingsDiscordScreen : SearchableSettings {
                         enabled = showButtons,
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = showDiscordButtonPref,
-                        title = stringResource(KMR.strings.pref_discord_show_discord_button),
-                        subtitle = stringResource(KMR.strings.pref_discord_show_discord_button_summary),
+                        preference = showWebsiteButtonPref,
+                        title = stringResource(KMR.strings.pref_discord_show_website_button),
+                        subtitle = stringResource(KMR.strings.pref_discord_show_website_button_summary),
                         enabled = showButtons,
                     ),
                 ),

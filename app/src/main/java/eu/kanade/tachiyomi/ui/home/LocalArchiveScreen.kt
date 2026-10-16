@@ -305,9 +305,11 @@ class LocalArchiveScreen(
                             Icon(Icons.Outlined.FolderOpen, stringResource(KMR.strings.offline_choose_folder))
                         }
                         // KMK <--
-                        IconButton(onClick = model::refresh, enabled = !state.scanning) {
+                        // KMK -->
+                        IconButton(onClick = model::refresh, enabled = !state.scanning && !state.loadingCache) {
                             Icon(Icons.Outlined.Refresh, stringResource(KMR.strings.offline_rescan))
                         }
+                        // KMK <--
                     },
                 )
             },
@@ -344,9 +346,11 @@ class LocalArchiveScreen(
                     )
                 }
                 // KMK <--
-                if (state.scanning || state.opening != null || state.metadataLoading) {
+                // KMK -->
+                if (state.scanning || state.loadingCache || state.opening != null || state.metadataLoading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
+                // KMK <--
                 if (recursive) {
                     OfflineLibraryControls(
                         status,
@@ -391,7 +395,10 @@ class LocalArchiveScreen(
                 }
                 // KMK <--
                 Text(
-                    text = if (state.scanning) {
+                    // KMK -->
+                    text = if (state.loadingCache) {
+                        stringResource(KMR.strings.offline_cache_loading)
+                    } else if (state.scanning) {
                         stringResource(KMR.strings.offline_scan_progress, state.foldersScanned, state.entries.count { !it.isDirectory })
                     } else if (showSeries) {
                         stringResource(KMR.strings.offline_series_count, series.size, filtered.count { !it.isDirectory })
@@ -402,6 +409,7 @@ class LocalArchiveScreen(
                     } else {
                         stringResource(KMR.strings.offline_entry_count, filtered.count { !it.isDirectory }, filtered.count { it.isDirectory })
                     },
+                    // KMK <--
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
@@ -419,7 +427,9 @@ class LocalArchiveScreen(
                         modifier = Modifier.padding(16.dp),
                     )
                 }
-                if (visibleEntries.isEmpty() && !state.scanning && !state.metadataLoading) {
+                // KMK -->
+                if (visibleEntries.isEmpty() && !state.scanning && !state.loadingCache && !state.metadataLoading) {
+                    // KMK <--
                     Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                         Text(
                             stringResource(

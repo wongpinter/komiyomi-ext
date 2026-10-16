@@ -57,13 +57,13 @@ For upstream commit `H` (already fetched locally):
 2. If Details names target commits (``master `abc` [title]``, `[pr only …]`), inspect them:
    `git show --stat abc`, then compare the hunks with the upstream change.
 3. Otherwise, search `master` for the change itself:
-   - `git grep -n -F '<distinctive added line>' master -- <path>` (Komikku keeps most upstream paths;
+   - `git grep -n -F '<distinctive added line>' master -- <path>` (Komiyomi Ext keeps most upstream paths;
      changes may be wrapped in `// KMK` / `// SY` markers or be in a renamed file).
    - `git log master --oneline -S'<distinctive snippet>' --since=<upstream date - 6 months>`.
    - For removals, check that the removed code is gone from `master`.
 4. Decide:
    - **O**: the change is in `master` (cherry-picked, squashed into another commit, or re-implemented).
-   - **?**: partly present, conflicts with a Komikku rework, or you can't tell.
+   - **?**: partly present, conflicts with a local rework, or you can't tell.
    - **empty**: not present.
    Never set **X** here. That is the maintainer's "won't pick" decision. The only exception is
    section 5 (version-bump-only commits).

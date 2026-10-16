@@ -200,8 +200,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="komikku" />
-                <data android:scheme="mihon" />
+                <!-- KMK -->
+                <data android:scheme="komiyomi-ext" />
 
                 <data android:host="anilist-auth" />
                 <data android:host="bangumi-auth" />
@@ -219,8 +219,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:scheme="eu.kanade.google.oauth" />
+                <!-- KMK -->
+                <data android:scheme="com.wongpinter.komiyomi.ext" />
             </intent-filter>
         </activity>
 

@@ -121,7 +121,10 @@ class LocalArchiveScreenModel(
             val previous = state.value
             mutableState.update {
                 it.copy(
-                    scanning = true,
+                    // KMK -->
+                    scanning = !useCache,
+                    loadingCache = useCache,
+                    // KMK <--
                     metadataLoading = false,
                     scanFailed = false,
                     unreadableFolders = 0,
@@ -144,6 +147,9 @@ class LocalArchiveScreenModel(
                         return@launch
                     }
                 }
+                // KMK -->
+                mutableState.update { it.copy(scanning = true, loadingCache = false) }
+                // KMK <--
                 catalog.scan(path, recursive).collect { scan ->
                     if (scan.complete && scan.foldersScanned == 0 && scan.unreadableFolders > 0) {
                         throw IOException("Local folder could not be listed")
@@ -151,12 +157,19 @@ class LocalArchiveScreenModel(
                     if (scan.complete) {
                         // KMK -->
                         val previousMetadata = state.value.metadata
+                        val completedScan = scan.copy(scannedAt = scan.scannedAt.takeIf { it > 0 } ?: System.currentTimeMillis())
+                        try {
+                            catalogCache.save(completedScan, previousMetadata)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            xLogE("Unable to save the local catalog", e)
+                        }
                         val archives = scan.entries.count { !it.isDirectory }
                         mutableState.update {
-                            it.copy(metadataLoading = true, metadataProcessed = 0, metadataTotal = archives)
+                            it.copy(scanning = false, metadataLoading = true, metadataProcessed = 0, metadataTotal = archives)
                         }
                         val metadata = loadArchiveMetadata(scan.entries, previousMetadata)
-                        val completedScan = scan.copy(scannedAt = scan.scannedAt.takeIf { it > 0 } ?: System.currentTimeMillis())
                         // KMK <--
                         try {
                             // KMK -->
@@ -187,6 +200,7 @@ class LocalArchiveScreenModel(
                         unreadableFolders = previous.unreadableFolders,
                         // KMK -->
                         metadataLoading = false,
+                        loadingCache = false,
                         // KMK <--
                     )
                 }
@@ -220,6 +234,7 @@ class LocalArchiveScreenModel(
                 // KMK -->
                 metadata = metadata,
                 metadataLoading = false,
+                loadingCache = false,
                 metadataProcessed = metadata.size,
                 metadataTotal = metadata.size,
                 lastScannedAt = scan.scannedAt.takeIf { it > 0 } ?: it.lastScannedAt,
@@ -540,6 +555,7 @@ class LocalArchiveScreenModel(
         val progress: Map<String, ArchiveReadingProgress> = emptyMap(),
         // KMK -->
         val metadata: Map<String, OfflineArchiveMetadata> = emptyMap(),
+        val loadingCache: Boolean = false,
         val metadataLoading: Boolean = false,
         val metadataProcessed: Int = 0,
         val metadataTotal: Int = 0,

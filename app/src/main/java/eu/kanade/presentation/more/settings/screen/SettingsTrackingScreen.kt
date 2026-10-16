@@ -80,7 +80,11 @@ object SettingsTrackingScreen : SearchableSettings {
     @Composable
     override fun RowScope.AppBarAction() {
         val uriHandler = LocalUriHandler.current
-        IconButton(onClick = { uriHandler.openUri("https://komikku-app.github.io/docs/guides/tracking") }) {
+        IconButton(
+            // KMK -->
+            onClick = { uriHandler.openUri("https://komiyomi-ext.wongpinter.com/docs/guides/tracking") },
+            // KMK <--
+        ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
                 contentDescription = stringResource(MR.strings.tracking_guide),

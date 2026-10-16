@@ -22,26 +22,24 @@
 
 </div>
 
-![Komiyomi Ext screenshots](./.github/readme-images/screens.png)
+![Komiyomi Ext screenshots showing recommendations, cover-based colors, bulk library actions, and custom themes](./.github/readme-images/screens.png)
 
 ## About
 
-Komiyomi Ext is an independently maintained Android manga reader based on [Komikku](https://github.com/komikku-app/komikku). It brings together compatible source extensions, a local CBZ/CBR library, downloads, trackers, and a configurable reader.
-
-This repository has its own roadmap, releases, and change history. It is maintained independently and does not sync changes from the Komikku repository.
+Komiyomi Ext is an independently maintained Android manga reader for compatible source extensions, local CBZ/CBR archives, downloads, trackers, and a configurable reader. It has its own product identity, roadmap, releases, and services.
 
 Komiyomi Ext is the extension-enabled app in the Komiyomi family. For a dedicated offline comic reader, see [Komiyomi](https://github.com/wongpinter/komiyomi).
 
 ## Features
 
-- **Sources and discovery:** Browse and read from compatible extensions, search across sources, save searches, and view feeds and recommendations.
-- **Local CBZ/CBR library:** Scan a custom folder, including nested folders, and read archives in place. Group multi-part archives as a series, cache scan results, track progress and favorites, and browse with grid or list view, search, filters, and sorting.
-- **Large CBZ reading:** Use a cached archive index and load pages from the archive as needed, which can speed later opens of large files.
-- **Downloads:** Download chapters in the background, set concurrent download limits, or queue every chapter of a manga. Optionally save downloaded chapters as CBZ files.
-- **Reader controls:** Choose reading direction and viewer modes, adjust page loading, bookmark pages, and navigate by chapter, section, or page. Keep multiple manga readers open as separate Android tasks, and use optional Smart Resume to continue at the next chapter after a configurable completion threshold.
-- **Library tools:** Organize entries with categories, tags, filters, and saved searches; use batch actions and source migration.
-- **Tracking and backups:** Sync reading progress with supported trackers and back up your library and settings.
-- **Personalization:** Use light, dark, and custom themes, including colors based on a manga's cover.
+- **Browse and discover manga:** Use compatible source extensions, search across sources, save searches, and explore feeds and recommendations.
+- **Read online or offline:** Configure reading direction, viewer modes, and page loading; bookmark pages and navigate by chapter, section, or page. Smart Resume can continue to the next chapter after your chosen completion threshold, and separate Android tasks let you keep multiple readers open.
+- **Manage a local CBZ/CBR library:** Scan a chosen folder and its subfolders without moving your archives. Group multi-part files into series, track progress and favorites, and browse with grid or list views, search, filters, and sorting.
+- **Open large archives efficiently:** Komiyomi Ext caches archive indexes and loads pages as needed, which can make later opens of large CBZ files faster.
+- **Download chapters:** Download in the background, set concurrent download limits, or queue all chapters. Optionally save downloaded chapters as CBZ files.
+- **Organize and back up your library:** Use categories, tags, saved searches, batch actions, source migration, and library/settings backups.
+- **Sync reading progress:** Connect trackers including AniList, Bangumi, Kitsu, Kavita, MangaDex, MangaUpdates, MyAnimeList, Shikimori, Suwayomi, and Komga.
+- **Personalize the app:** Choose light, dark, or custom themes, including colors generated from a manga's cover.
 
 Online source extensions are managed separately from this repository. Komiyomi Ext does not host or bundle manga content.
 
@@ -77,7 +75,7 @@ Contributions are welcome. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 
 ## Project lineage and credits
 
-Komiyomi Ext is an independent project built on Komikku. Its codebase also retains work and contributions from [Mihon](https://github.com/mihonapp/mihon), [TachiyomiSY](https://github.com/jobobby04/TachiyomiSY), and contributors to those projects. These links document the project's code history; they do not imply affiliation, endorsement, or ongoing synchronization.
+Komiyomi Ext is a separate, independently maintained project. Its codebase includes work from [Komikku](https://github.com/komikku-app/komikku), [Mihon](https://github.com/mihonapp/mihon), and [TachiyomiSY](https://github.com/jobobby04/TachiyomiSY). These links record source history and contributor attribution; they do not imply affiliation, endorsement, or ongoing synchronization.
 
 See the [Komikku contributor history](https://github.com/komikku-app/komikku/graphs/contributors), [Mihon contributors](https://github.com/mihonapp/mihon/graphs/contributors), and [TachiyomiSY contributors](https://github.com/jobobby04/TachiyomiSY/graphs/contributors). Additional credits are available in the app's **About** section.
 

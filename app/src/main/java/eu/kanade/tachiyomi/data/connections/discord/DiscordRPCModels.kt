@@ -8,7 +8,6 @@ package eu.kanade.tachiyomi.data.connections.discord
 
 import androidx.annotation.StringRes
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.util.system.isPreviewBuildType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -16,15 +15,19 @@ import kotlinx.serialization.json.JsonElement
 // Constant for logging tag
 const val RICH_PRESENCE_TAG = "discord_rpc"
 
-// Constant for application id
-internal const val RICH_PRESENCE_APPLICATION_ID = "1424627741256585271"
+// KMK -->
+// Set a Komiyomi Ext Discord application ID before enabling Rich Presence.
+internal const val RICH_PRESENCE_APPLICATION_ID = ""
+// KMK <--
 
 val DOWNLOAD_BUTTON_LABEL_RES = R.string.discord_download_button
 // KMK -->
 const val DOWNLOAD_BUTTON_URL = "https://github.com/wongpinter/komiyomi-ext/releases/latest"
 // KMK <--
-const val DISCORD_BUTTON_LABEL = "Discord"
-const val DISCORD_BUTTON_URL = "https://discord.gg/85jB7V5AJR"
+// KMK -->
+const val WEBSITE_BUTTON_LABEL = "Website"
+const val WEBSITE_BUTTON_URL = "https://komiyomi-ext.wongpinter.com/"
+// KMK <--
 
 @Serializable
 data class Activity(
@@ -188,26 +191,16 @@ enum class DiscordScreen(
     @StringRes val details: Int,
     val imageUrl: String,
 ) {
-    APP(R.string.app_name, R.string.discord_status_using, KOMIKKU_IMAGE),
-    LIBRARY(R.string.label_library, R.string.discord_status_browsing, LIBRARY_IMAGE_URL),
-    UPDATES(R.string.label_recent_updates, R.string.discord_status_scrolling, UPDATES_IMAGE_URL),
-    HISTORY(R.string.label_recent_manga, R.string.discord_status_scrolling, HISTORY_IMAGE_URL),
-    BROWSE(R.string.label_sources, R.string.discord_status_browsing, BROWSE_IMAGE_URL),
-    MORE(R.string.label_settings, R.string.discord_status_messing, MORE_IMAGE_URL),
-    WEBVIEW(R.string.action_web_view, R.string.discord_status_browsing, WEBVIEW_IMAGE_URL),
-    MANGA(R.string.manga, R.string.reading, MANGA_IMAGE_URL),
+    // KMK -->
+    APP(R.string.app_name, R.string.discord_status_using, ""),
+    LIBRARY(R.string.label_library, R.string.discord_status_browsing, ""),
+    UPDATES(R.string.label_recent_updates, R.string.discord_status_scrolling, ""),
+    HISTORY(R.string.label_recent_manga, R.string.discord_status_scrolling, ""),
+    BROWSE(R.string.label_sources, R.string.discord_status_browsing, ""),
+    MORE(R.string.label_settings, R.string.discord_status_messing, ""),
+    WEBVIEW(R.string.action_web_view, R.string.discord_status_browsing, ""),
+    MANGA(R.string.manga, R.string.reading, ""),
+    // KMK <--
 }
 
-// Constants for standard Rich Presence image urls
-private const val KOMIKKU_IMAGE_URL = "emojis/1365538288894738532.webp?quality=lossless"
-private const val KOMIKKU_PREVIEW_IMAGE_URL = "emojis/1365538288894738532.webp?quality=lossless"
-
-private val KOMIKKU_IMAGE = if (isPreviewBuildType) KOMIKKU_PREVIEW_IMAGE_URL else KOMIKKU_IMAGE_URL
-private const val LIBRARY_IMAGE_URL = "emojis/1365262809050644591.webp?quality=lossless"
-private const val UPDATES_IMAGE_URL = "emojis/1365261957883625492.webp?quality=lossless"
-private const val HISTORY_IMAGE_URL = "emojis/1365262076787949598.webp?quality=lossless"
-private const val BROWSE_IMAGE_URL = "emojis/1365263374992146576.webp?quality=lossless"
-private const val MORE_IMAGE_URL = "emojis/1365261438276599849.webp?quality=lossless"
-private const val WEBVIEW_IMAGE_URL = "emojis/1365262268811579443.webp?quality=lossless"
-private const val MANGA_IMAGE_URL = "emojis/1365263962622529576.webp?quality=lossless"
 // <-- AM (DISCORD)

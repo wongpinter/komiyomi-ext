@@ -54,7 +54,6 @@ import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.icons.CustomIcons
-import tachiyomi.presentation.core.icons.Discord
 import tachiyomi.presentation.core.icons.Github
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -227,9 +226,11 @@ class AboutScreen : Screen() {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.help_translate),
                         onPreferenceClick = {
+                            // KMK -->
                             uriHandler.openUri(
-                                "https://hosted.weblate.org/engage/komikku-app/",
+                                "https://github.com/wongpinter/komiyomi-ext/blob/main/CONTRIBUTING.md#translations",
                             )
+                            // KMK <--
                         },
                     )
                 }
@@ -244,9 +245,11 @@ class AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         // KMK -->
-                        title = stringResource(KMR.strings.upstream_privacy_policy),
+                        title = stringResource(KMR.strings.privacy_policy),
                         // KMK <--
-                        onPreferenceClick = { uriHandler.openUri("https://komikku-app.github.io/privacy/") },
+                        // KMK -->
+                        onPreferenceClick = { uriHandler.openUri("https://komiyomi-ext.wongpinter.com/privacy/") },
+                        // KMK <--
                     )
                 }
 
@@ -259,33 +262,13 @@ class AboutScreen : Screen() {
                     ) {
                         LinkIcon(
                             // KMK -->
-                            label = stringResource(KMR.strings.upstream_website),
+                            label = stringResource(KMR.strings.website),
                             // KMK <--
                             icon = Icons.Outlined.Public,
-                            url = "https://komikku-app.github.io",
-                        )
-                        LinkIcon(
                             // KMK -->
-                            label = stringResource(KMR.strings.upstream_community),
+                            url = "https://komiyomi-ext.wongpinter.com/",
                             // KMK <--
-                            icon = CustomIcons.Discord,
-                            url = "https://discord.gg/85jB7V5AJR",
                         )
-                        // LinkIcon(
-                        //     label = "X",
-                        //     icon = CustomIcons.X,
-                        //     url = "https://x.com/mihonapp",
-                        // )
-                        // LinkIcon(
-                        //     label = "Facebook",
-                        //     icon = CustomIcons.Facebook,
-                        //     url = "https://facebook.com/mihonapp",
-                        // )
-                        // LinkIcon(
-                        //     label = "Reddit",
-                        //     icon = CustomIcons.Reddit,
-                        //     url = "https://www.reddit.com/r/mihonapp",
-                        // )
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,

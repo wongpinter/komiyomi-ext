@@ -12,7 +12,9 @@ class BaselineProfileGenerator {
 
     @Test
     fun generate() = baselineProfileRule.collect(
-        packageName = "app.komikku.benchmark",
+        // KMK -->
+        packageName = "com.wongpinter.komiyomi.ext.benchmark",
+        // KMK <--
         profileBlock = {
             pressHome()
             startActivityAndWait()

@@ -411,7 +411,9 @@ class LibraryUpdateNotifier(
     }
 
     companion object {
-        const val HELP_WARNING_URL = "https://komikku-app.github.io/docs/faq/library#why-am-i-warned-about-large-bulk-updates-and-downloads"
+        // KMK -->
+        const val HELP_WARNING_URL = "https://komiyomi-ext.wongpinter.com/docs/faq/library#why-am-i-warned-about-large-bulk-updates-and-downloads"
+        // KMK <--
     }
 }
 

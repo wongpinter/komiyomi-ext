@@ -8,7 +8,7 @@ root) of upstream commits that may still need to be cherry-picked into this fork
 How it works (full explanation in README.md next to this file):
 
 * Upstreams are set in ``config.json``: one ``main_upstream`` (the *primary*, e.g. mihon for
-  Komikku), whose commits define the order of the list, and one or more
+  Komiyomi Ext), whose commits define the order of the list, and one or more
   ``additional_upstreams`` (*secondaries*, e.g. tachiyomiSY), whose commits are interleaved
   with the primary's.
 * Only non-merge commits whose committer date is on/after ``since`` are listed. ``since`` is

@@ -40,7 +40,7 @@ Komiyomi Ext is independently maintained and is not synchronized with the Komikk
 When creating a fork, remember to:
 
 - The app is branded **Komiyomi Ext** to distinguish it from the standalone **Komiyomi** CBZ/CBR reader.
-- The application ID remains `app.komikku` so compatible existing installs can upgrade and retain app data. Changing it creates a separate Android app identity.
+- The application ID is `com.wongpinter.komiyomi.ext`. It is separate from the legacy `app.komikku` identity; Android treats it as a separate app, so existing installs and app data do not transfer automatically. Google OAuth credentials must also be configured for the new app identity.
 - The update checker targets the Komiyomi Ext repository. Keep it pointed at this project when changing release workflows.
 - Keep telemetry and crash-reporting endpoints project-owned; do not send Komiyomi Ext data to upstream services.
 
@@ -55,8 +55,5 @@ When creating a fork, remember to:
 7. Don't add any test users and go back to the dashboard
 8. Click publish
 9. Go to API & Services -> Credentials
-10. Click Create credentials -> Oauth client ID
-11. Select Android, give it a name, and set `eu.kanade.google.oauth` as the package name
-12. To get the SHA-1 key, run `keytool -printcert -jarfile app-standard-universal-release.apk` on your apk, and copy the listed SHA-1
-13. Expand advanced settings, and enable Custom URL scheme
-14. After that just download the json, name it to `client_secrets.json` and put it in `app/src/main/assets/`
+10. The app currently reads `client_secrets.json` from `app/src/main/assets/` and uses the callback `com.wongpinter.komiyomi.ext:/oauth2redirect`.
+11. The current implementation uses a custom URI scheme for Google OAuth. Google no longer supports custom-scheme redirects on Android; migrate the Google Drive sign-in flow to a supported Android OAuth method before public release. See [Google's native app OAuth guidance](https://developers.google.com/identity/protocols/oauth2/native-app).

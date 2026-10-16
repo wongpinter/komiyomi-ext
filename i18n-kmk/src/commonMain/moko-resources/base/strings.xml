@@ -187,12 +187,15 @@
     <!-- Offline archives -->
     <string name="komiyomi_ext_app_name" translatable="false">Komiyomi Ext</string>
     <string name="komiyomi_ext_app_description" translatable="false">Komiyomi Ext - a manga reader app</string>
-    <string name="upstream_website">Upstream website</string>
-    <string name="upstream_community">Upstream community</string>
-    <string name="upstream_privacy_policy">Upstream privacy policy</string>
+    <string name="discord_rpc_unavailable">Rich Presence is unavailable until Komiyomi Ext has its own Discord application.</string>
+    <string name="website">Website</string>
+    <string name="privacy_policy">Privacy policy</string>
     <string name="offline_choose_folder">Choose local folder</string>
     <string name="offline_rescan">Rescan folder</string>
     <string name="offline_scan_progress">Scanning %1$d folders · %2$d archives</string>
+    <!-- KMK -->
+    <string name="offline_cache_loading">Loading saved library</string>
+    <!-- KMK -->
     <!-- KMK -->
     <string name="offline_metadata_loading">Reading archive details %1$d / %2$d</string>
     <string name="offline_last_scan">Last scanned %1$s</string>
@@ -324,9 +327,9 @@
     <string name="pref_discord_show_timestamp">Show Time</string>
     <string name="pref_discord_show_timestamp_summary">Display activity time</string>
     <string name="pref_discord_show_buttons">Show Buttons</string>
-    <string name="pref_discord_show_buttons_summary">Display buttons to download the app or join the Discord server</string>
+    <string name="pref_discord_show_buttons_summary">Display buttons to download the app or visit the website</string>
     <string name="pref_discord_show_download_button">Show Download Button</string>
     <string name="pref_discord_show_download_button_summary">Displays a button to download the app</string>
-    <string name="pref_discord_show_discord_button">Show Discord Button</string>
-    <string name="pref_discord_show_discord_button_summary">Displays a button to join the Discord server</string>
+    <string name="pref_discord_show_website_button">Show Website Button</string>
+    <string name="pref_discord_show_website_button_summary">Displays a button to visit the project website</string>
 </resources>

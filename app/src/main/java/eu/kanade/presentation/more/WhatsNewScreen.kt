@@ -70,44 +70,9 @@ private fun WhatsNewScreenPreview() {
         WhatsNewScreen(
             currentVersion = "v0.99.9",
             versionName = "v1.00.0",
-            changelogInfo = """
-                ## v1.13.1
-
-
-                #### What's Changed
-                ##### Fix
-
-                - Fix mark existing duplicate read chapters as read option not working in some cases ([@AntsyLich](https://github.com/AntsyLich))
-                - Fix: NaN when dragging `Start/Resume` reading button in MangaScreen ([@cuong-tran](https://github.com/cuong-tran))
-
-
-                **Full Changelog**: [komikku-app/komikku@v1.13.0...v1.13.1](https://github.com/komikku-app/komikku/compare/v1.13.0...v1.13.1)
-
-
-                -----
-                ## v1.12.6
-
-
-                #### What's Changed
-                ##### Fix
-                - bump version ([@cuong-tran](https://github.com/cuong-tran))
-                - rename repo ([@cuong-tran](https://github.com/cuong-tran))
-
-                **Full Changelog**: [komikku-app/komikku@v1.12.5...v1.12.6](https://github.com/komikku-app/komikku/compare/v1.12.5...v1.12.6)
-
-
-                -----
-                ## v1.12.5
-
-
-
-                #### What's Changed
-                ##### Fix
-
-                - Fix (MangasPage): crash when extensions trying to destructuring MangasPage ([@cuong-tran](https://github.com/cuong-tran))
-
-                **Full Changelog**: [komikku-app/komikku@v1.12.4...v1.12.5](https://github.com/komikku-app/komikku/compare/v1.12.4...v1.12.5)
-            """,
+            // KMK -->
+            changelogInfo = "## Komiyomi Ext\n\nPreview changelog",
+            // KMK <--
             onOpenInBrowser = {},
             onAcceptUpdate = {},
         )
