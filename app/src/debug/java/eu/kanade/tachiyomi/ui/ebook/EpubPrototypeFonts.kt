@@ -25,11 +25,21 @@ internal object EpubPrototypeFonts {
 
     val families = listOf(
         Family("Literata", "literata", "Literata", "opsz,wght", 200..900, FontFamily.SERIF),
-        Family("Source Serif 4", "sourceserif4", "SourceSerif4", "opsz,wght", 200..900, FontFamily.SERIF),
-        Family("Lora", "lora", "Lora", "wght", 400..700, FontFamily.SERIF),
+        Family("Crimson Pro", "crimsonpro", "CrimsonPro", "wght", 200..900, FontFamily.SERIF),
+        Family("Bitter", "bitter", "Bitter", "wght", 100..900, FontFamily.SERIF),
+        Family("Merriweather", "merriweather", "Merriweather", "opsz,wdth,wght", 300..900, FontFamily.SERIF),
+        Family("Inter", "inter", "Inter", "opsz,wght", 100..900, FontFamily.SANS_SERIF),
         Family("Atkinson Hyperlegible Next", "atkinsonhyperlegiblenext", "AtkinsonHyperlegibleNext", "wght", 200..800, FontFamily.SANS_SERIF),
-        Family("Source Sans 3", "sourcesans3", "SourceSans3", "wght", 200..900, FontFamily.SANS_SERIF),
     )
+
+    private val retiredFamilies = setOf(
+        FontFamily("Source Serif 4"),
+        FontFamily("Lora"),
+        FontFamily("Source Sans 3"),
+    )
+
+    fun normalize(preferences: EpubPreferences): EpubPreferences =
+        if (preferences.fontFamily in retiredFamilies) select(preferences, null) else preferences
 
     // Readium uses Android PATTERN_SIMPLE_GLOB, not regex. No broad asset-directory access.
     val servedAssetPatterns = families.flatMap { listOf(it.uprightPath, it.italicPath) }
@@ -55,10 +65,13 @@ internal object EpubPrototypeFonts {
         }
     }
 
-    /** A null family returns to the publisher/default font without resetting other settings. */
+    /** A null family restores publisher styles so embedded EPUB fonts can be used. */
     fun select(preferences: EpubPreferences, family: FontFamily?): EpubPreferences {
         require(family == null || families.any { it.fontFamily == family })
-        return preferences.copy(fontFamily = family)
+        return preferences.copy(
+            fontFamily = family,
+            publisherStyles = if (family == null) true else preferences.publisherStyles,
+        )
     }
 }
 // KMK <--

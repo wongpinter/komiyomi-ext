@@ -7,22 +7,21 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.util.Xml
 import org.w3c.dom.Element
-import org.xml.sax.InputSource
+import org.xmlpull.v1.XmlPullParser
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.StringReader
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.zip.ZipFile
-import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 
 /** Extracts only a bounded cover resource; never unpacks or scans the full EPUB payload. */
 internal object EpubCoverExtractor {
     private const val MAX_CONTAINER_BYTES = 1024 * 1024
-    private const val MAX_PACKAGE_BYTES = 4 * 1024 * 1024
+    private const val MAX_PACKAGE_BYTES = 16 * 1024 * 1024
     private const val MAX_COVER_BYTES = 16 * 1024 * 1024
     private const val MAX_DECODE_PIXELS = 1_200_000L
     private const val THUMBNAIL_WIDTH = 480
@@ -124,20 +123,39 @@ internal object EpubCoverExtractor {
     }
 
     private fun parseXml(bytes: ByteArray) = runCatching {
-        val factory = DocumentBuilderFactory.newInstance().apply {
-            isNamespaceAware = true
-            isXIncludeAware = false
-            isExpandEntityReferences = false
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "")
-            setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "")
+        // Android's DOM parser does not support desktop JAXP security flags.
+        // Tokenize without DTD processing and reject declarations before building a DOM.
+        val parser = Xml.newPullParser().apply {
+            setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+            setInput(ByteArrayInputStream(bytes), null)
         }
-        factory.newDocumentBuilder().apply {
-            setEntityResolver { _, _ -> InputSource(StringReader("")) }
-        }.parse(ByteArrayInputStream(bytes))
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+        val elements = ArrayDeque<Element>()
+        while (true) {
+            when (parser.nextToken()) {
+                XmlPullParser.END_DOCUMENT -> break
+                XmlPullParser.DOCDECL -> error("EPUB metadata must not contain a DTD")
+                XmlPullParser.START_TAG -> {
+                    val element = document.createElementNS(parser.namespace.ifEmpty { null }, parser.name)
+                    for (index in 0 until parser.attributeCount) {
+                        element.setAttributeNS(
+                            parser.getAttributeNamespace(index).ifEmpty { null },
+                            parser.getAttributeName(index),
+                            parser.getAttributeValue(index),
+                        )
+                    }
+                    (elements.lastOrNull() ?: document).appendChild(element)
+                    elements.addLast(element)
+                }
+                XmlPullParser.END_TAG -> elements.removeLast()
+                XmlPullParser.TEXT, XmlPullParser.CDSECT, XmlPullParser.ENTITY_REF -> {
+                    val text = requireNotNull(parser.text) { "Unresolved XML entity" }
+                    elements.lastOrNull()?.appendChild(document.createTextNode(text))
+                }
+            }
+        }
+        require(elements.isEmpty() && document.documentElement != null)
+        document
     }.getOrNull()
 
     private fun normalizeEntryPath(base: String, relative: String): String? = runCatching {

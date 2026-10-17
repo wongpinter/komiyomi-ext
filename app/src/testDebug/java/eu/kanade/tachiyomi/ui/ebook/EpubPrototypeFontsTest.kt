@@ -16,21 +16,21 @@ import java.nio.ByteOrder
 
 class EpubPrototypeFontsTest {
     @Test
-    fun `five distinct font families preserve source order`() {
+    fun `six distinct font families preserve source order`() {
         assertEquals(
-            listOf("Literata", "Source Serif 4", "Lora", "Atkinson Hyperlegible Next", "Source Sans 3"),
+            listOf("Literata", "Crimson Pro", "Bitter", "Merriweather", "Inter", "Atkinson Hyperlegible Next"),
             EpubPrototypeFonts.families.map { it.name },
         )
-        assertEquals(5, EpubPrototypeFonts.families.map { it.fontFamily }.distinct().size)
+        assertEquals(6, EpubPrototypeFonts.families.map { it.fontFamily }.distinct().size)
     }
 
     @Test
-    fun `font selection and publisher reset preserve all other preferences`() {
+    fun `font selection preserves preferences and publisher reset restores embedded fonts`() {
         val original = EpubPreferences(scroll = true, fontSize = 1.7, pageMargins = 1.4, publisherStyles = false)
         EpubPrototypeFonts.families.forEach { family ->
             val changed = EpubPrototypeFonts.select(original, family.fontFamily)
             assertEquals(family.fontFamily, changed.fontFamily)
-            assertEquals(original, EpubPrototypeFonts.select(changed, null))
+            assertEquals(original.copy(publisherStyles = true), EpubPrototypeFonts.select(changed, null))
         }
     }
 
@@ -48,9 +48,9 @@ class EpubPrototypeFontsTest {
         // Android's simple glob treats brackets/commas literally, unlike regex character classes.
         val expected = paths.map { it.removeSuffix(".ttf") + '\\' + ".ttf" }
         assertEquals(expected, patterns)
-        assertEquals(10, patterns.distinct().size)
+        assertEquals(12, patterns.distinct().size)
         assertFalse(patterns.any { ".*" in it || "\\Q" in it })
-        listOf("epub-fonts/manifest.json", "epub-fonts/lora/OFL.txt", "../secret.ttf", "other/font.ttf").forEach { path ->
+        listOf("epub-fonts/manifest.json", "epub-fonts/bitter/OFL.txt", "../secret.ttf", "other/font.ttf").forEach { path ->
             assertFalse(path in paths)
         }
     }

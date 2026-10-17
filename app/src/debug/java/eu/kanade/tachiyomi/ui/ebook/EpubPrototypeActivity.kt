@@ -212,7 +212,7 @@ class EpubPrototypeActivity : BaseActivity() {
             loadIndex = { model.tocIndex(state) },
             readingOrder = publication.readingOrder,
             currentHref = reader.currentLocator.value.href.toString(),
-            colorScheme = readerTheme.chromeColorScheme(appColorScheme ?: readerTheme.colorScheme),
+            colorScheme = readerChromeColorScheme(appColorScheme ?: readerTheme.colorScheme),
             onNavigate = { link, cachedLocator ->
                 if (ready !== state || navigator !== reader) {
                     false
@@ -614,13 +614,7 @@ class EpubPrototypeActivity : BaseActivity() {
         change: (org.readium.r2.navigator.epub.EpubPreferences) -> org.readium.r2.navigator.epub.EpubPreferences,
     ) {
         if (ready !== state || navigator !== reader) return
-        val previous = model.preferences(state.file)
-        val changed = change(previous)
-        if (changed != previous) {
-            model.saveLocation(state.file, reader.currentLocator.value)
-            model.savePreferences(state.file, changed)
-            reader.submitPreferences(changed)
-        }
+        applyPreferences(state, change)
         updateReaderControls(false)
     }
 
@@ -636,12 +630,14 @@ class EpubPrototypeActivity : BaseActivity() {
     private fun updateSystemBars(showSystemBars: Boolean) {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
-        val surface = if (ready == null) appColorScheme?.surface else readerTheme.colorScheme.surface
-        val useDarkSystemBarIcons = surface?.luminance()?.let { it > 0.5f } ?: true
+        val surface = if (ready == null || controlsVisible) appColorScheme?.surface else readerTheme.colorScheme.surface
         WindowInsetsControllerCompat(window, window.decorView).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            isAppearanceLightStatusBars = useDarkSystemBarIcons
-            isAppearanceLightNavigationBars = useDarkSystemBarIcons
+            surface?.let {
+                val useDarkSystemBarIcons = it.luminance() > 0.5f
+                isAppearanceLightStatusBars = useDarkSystemBarIcons
+                isAppearanceLightNavigationBars = useDarkSystemBarIcons
+            }
             if (showSystemBars) show(WindowInsetsCompat.Type.systemBars()) else hide(WindowInsetsCompat.Type.systemBars())
         }
     }

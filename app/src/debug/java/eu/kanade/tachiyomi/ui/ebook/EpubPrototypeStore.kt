@@ -159,11 +159,16 @@ internal class EpubPrototypeStore(context: Context) {
         preferences.edit { putString("location-${file.name}", locator.toJSON().toString()) }
     }
 
-    fun readerPreferences(file: File): EpubPreferences = runCatching {
-        preferences.getString("preferences-${file.name}", null)?.let {
-            json.decodeFromString<EpubPreferences>(it)
-        }
-    }.getOrNull() ?: EpubPreferences(scroll = true)
+    fun readerPreferences(file: File): EpubPreferences {
+        val restored = runCatching {
+            preferences.getString("preferences-${file.name}", null)?.let {
+                json.decodeFromString<EpubPreferences>(it)
+            }
+        }.getOrNull() ?: EpubPreferences(scroll = true)
+        val normalized = EpubPrototypeFonts.normalize(restored)
+        if (normalized != restored) savePreferences(file, normalized)
+        return normalized
+    }
 
     fun savePreferences(file: File, value: EpubPreferences) {
         preferences.edit {

@@ -29,16 +29,19 @@ Branch: `feat/epub-reader`.
   Direct middle/last-section jumps support checks on spines with tens of thousands of entries.
 - Latest Readium locator and basic preferences are saved per imported copy, isolated from
   manga data. The latest position can be earlier than a previous position.
-- **Imported books** lists existing copies with publication title/author and size, newest opened first.
-  Reopen any copy with its own locator/preferences, or confirm removal of just that copy.
-  Failed opening of an older copy never deletes it. No book is parsed just to display the list.
+- **Imported books** lists existing copies with publication cover, title/author and size, newest opened first.
+  The cover grid starts compact and offers adjustable small/medium/large sizes, plus list view, title/author
+  search, reading-status filters, sorting and a continue-reading card. The shelf, reader controls and menus
+  use the selected app `TachiyomiTheme`; only the reading page keeps its separate light/sepia/dark setting.
+  Reopen any copy with its own locator/preferences, or confirm removal of just that copy. Failed opening of an
+  older copy never deletes it. No book is parsed just to display the list.
 - Close book returns to import controls. Remove imported copies requires confirmation,
   frees only prototype-owned copies/staging files and resets only prototype state.
 
 ## Current limits
 
-- No polished bookshelf, production book catalog, user font-file import,
-  annotations or app-backup integration yet. Per-book margin/line/paragraph/alignment controls
+- The bookshelf remains an experimental debug prototype; no production book catalog, annotations,
+  app-backup integration or user font-file import yet. Per-book margin/line/paragraph/alignment controls
   are available in the debug reflowable reader; see [layout settings](epub-layout-settings.md).
   Five bundled Google font families
   are selectable per reflowable book in the debug reader; see [font details](epub-fonts.md).
@@ -67,7 +70,8 @@ Branch: `feat/epub-reader`.
 - verifyEpubPhotoView: all 22 bundled classes byte-identical; duplicate-class gate passed.
 - App releaseRuntimeClasspath: no Readium artifacts.
 - git diff --check: passed.
-- Rendered/device/1 GB EPUB validation: NOT RUN (adb reports no connected device).
+- EPUB shelf UI smoke on Oppo CPH2529 / Android 15: selected app theme, imported covers, small/medium/large grid sizes, list view and Finished filter rendered. The 1 GB title was visible in the shelf but was not opened during this UI pass.
+- Full 1 GB reader traversal/performance validation was not part of this UI pass.
 
 These checks establish build/storage behavior, not production reader readiness.
 

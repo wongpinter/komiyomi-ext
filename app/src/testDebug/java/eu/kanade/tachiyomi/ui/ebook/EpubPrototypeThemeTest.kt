@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 
 class EpubPrototypeThemeTest {
     @Test
-    fun `reader chrome uses manga app accents and preserves the selected reading surface`() {
+    fun `reader chrome follows the full manga app theme`() {
         val appColors = lightColorScheme(
             primary = Color(0xFF385D9B),
             onPrimary = Color.White,
@@ -24,12 +24,7 @@ class EpubPrototypeThemeTest {
             onTertiaryContainer = Color(0xFF28132F),
         )
 
-        val darkChrome = EpubReaderTheme.DARK.chromeColorScheme(appColors)
-
-        assertEquals(appColors.primary, darkChrome.primary)
-        assertEquals(appColors.secondary, darkChrome.secondary)
-        assertEquals(EpubReaderTheme.DARK.colorScheme.surface, darkChrome.surface)
-        assertEquals(EpubReaderTheme.DARK.colorScheme.onSurface, darkChrome.onSurface)
+        assertEquals(appColors, readerChromeColorScheme(appColors))
     }
 }
 // KMK <--
