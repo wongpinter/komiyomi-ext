@@ -43,6 +43,26 @@ class EpubEngine(context: Context) {
         }
     }
 
+    suspend fun readMetadataJson(file: File): String = withContext(Dispatchers.IO) {
+        val fileBytes = file.length()
+        val asset = assets.retrieve(file).getOrElse { throw IOException(it.toString()) }
+        var publication: Publication? = null
+        try {
+            val opener = PublicationOpener(
+                publicationParser = EpubParser(httpClient, EpubPositionPolicy.strategy(fileBytes)),
+            )
+            publication = opener.open(asset, allowUserInteraction = false)
+                .getOrElse { throw IOException(it.toString()) }
+            currentCoroutineContext().ensureActive()
+            if (!publication.conformsTo(Publication.Profile.EPUB) || publication.isRestricted) {
+                throw IOException("Unsupported or restricted EPUB")
+            }
+            publication.metadata.toJSON().toString()
+        } finally {
+            if (publication != null) publication.close() else asset.close()
+        }
+    }
+
     private suspend fun openOnIo(file: File): EpubSession {
         val started = System.nanoTime()
         val fileBytes = file.length()

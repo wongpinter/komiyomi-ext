@@ -31,6 +31,10 @@ import java.io.IOException
 internal class EpubPrototypeViewModel(application: Application) : AndroidViewModel(application) {
     private val store = EpubPrototypeStore(application)
     private val engine = EpubEngine(application)
+
+    fun shelfSettings(): EpubPrototypeStore.ShelfSettings = store.shelfSettings()
+
+    fun saveShelfSettings(settings: EpubPrototypeStore.ShelfSettings) = store.saveShelfSettings(settings)
     private val importer = EpubImporter(store.directory)
     private val mutableState = MutableStateFlow<State>(State.Idle)
     val state = mutableState.asStateFlow()
@@ -75,6 +79,12 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
         launchOpen {
             store.importedBooks().firstOrNull { it.file == file }?.file
                 ?: throw IOException("No managed EPUB selected")
+        }
+    }
+
+    suspend fun metadataJson(file: File): String = withContext(Dispatchers.IO) {
+        store.readMetadataJson(file) ?: engine.readMetadataJson(file).also { metadata ->
+            store.saveMetadataJson(file, metadata)
         }
     }
 
@@ -140,7 +150,11 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
                         file,
                         title = opened.publication.metadata.title,
                         authors = opened.publication.metadata.authors.joinToString(", ") { it.name },
+                        chapterCount = opened.publication.readingOrder.size,
                     )
+                    runCatching {
+                        store.saveMetadataJson(file, opened.publication.metadata.toJSON().toString())
+                    }.onFailure { xLogE("Unable to cache EPUB metadata", it) }
                     session = opened
                     mutableState.value = State.Ready(file, opened)
                     transferred = true

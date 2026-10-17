@@ -14,9 +14,39 @@ import java.io.File
 /** Prototype-only state, isolated from manga preferences/database and standard backups. */
 internal class EpubPrototypeStore(context: Context) {
     private val preferences = context.getSharedPreferences("epub_prototype", Context.MODE_PRIVATE)
+    private val shelfPreferences = context.getSharedPreferences("epub_shelf", Context.MODE_PRIVATE)
     val directory = File(context.noBackupFilesDir, "epub-prototype")
     private val json = Json { ignoreUnknownKeys = true }
     private val coverLock = Any()
+
+    internal data class ShelfSettings(
+        val query: String = "",
+        val filter: String = "ALL",
+        val sort: String = "RECENT",
+        val descending: Boolean = true,
+        val layout: String = "GRID",
+        val coverSize: Int = 96,
+    )
+
+    fun shelfSettings(): ShelfSettings = ShelfSettings(
+        query = shelfPreferences.getString("query", "").orEmpty(),
+        filter = shelfPreferences.getString("filter", "ALL") ?: "ALL",
+        sort = shelfPreferences.getString("sort", "RECENT") ?: "RECENT",
+        descending = shelfPreferences.getBoolean("descending", true),
+        layout = shelfPreferences.getString("layout", "GRID") ?: "GRID",
+        coverSize = shelfPreferences.getInt("coverSize", 96).coerceIn(96, 192),
+    )
+
+    fun saveShelfSettings(settings: ShelfSettings) {
+        shelfPreferences.edit {
+            putString("query", settings.query)
+            putString("filter", settings.filter)
+            putString("sort", settings.sort)
+            putBoolean("descending", settings.descending)
+            putString("layout", settings.layout)
+            putInt("coverSize", settings.coverSize.coerceIn(96, 192))
+        }
+    }
 
     fun latestFile(): File? {
         val name = preferences.getString("latest", null) ?: return null
@@ -31,13 +61,20 @@ internal class EpubPrototypeStore(context: Context) {
         }
     }
 
-    fun markOpened(file: File, title: String? = null, authors: String? = null, openedAt: Long = System.currentTimeMillis()) {
+    fun markOpened(
+        file: File,
+        title: String? = null,
+        authors: String? = null,
+        chapterCount: Int? = null,
+        openedAt: Long = System.currentTimeMillis(),
+    ) {
         requireManaged(file)
         preferences.edit {
             putString("latest", file.name)
             putString("opened-${file.name}", openedAt.toString())
             title?.takeIf { it.isNotBlank() }?.let { putString("title-${file.name}", it.take(512)) }
             authors?.let { putString("authors-${file.name}", it.take(512)) }
+            chapterCount?.let { putInt("chapters-${file.name}", it) }
         }
     }
 
@@ -47,6 +84,11 @@ internal class EpubPrototypeStore(context: Context) {
             .filter { it.isFile && it.extension == "epub" && it.canonicalFile.parentFile == directory.canonicalFile }
             .map { file ->
                 val progress = locator(file)?.locations?.totalProgression?.toFloat()?.coerceIn(0f, 1f)
+                val chapterCount = preferences.getInt("chapters-${file.name}", -1).takeIf { it >= 0 }
+                    ?: EpubCoverExtractor.readingOrderCount(file)?.also { count ->
+                        preferences.edit { putInt("chapters-${file.name}", count) }
+                    }
+                    ?: 0
                 ImportedEpub(
                     file = file,
                     title = preferences.getString("title-${file.name}", null) ?: file.nameWithoutExtension,
@@ -55,9 +97,38 @@ internal class EpubPrototypeStore(context: Context) {
                     size = file.length(),
                     coverFile = cachedCover(file),
                     progression = progress,
+                    addedAt = file.lastModified(),
+                    chapterCount = chapterCount,
                 )
             }
             .sortedWith(compareByDescending<ImportedEpub> { it.lastOpened }.thenBy { it.title })
+    }
+
+    private fun metadataFile(file: File): File {
+        requireManaged(file)
+        return File(File(directory, "metadata"), "${file.name}.json")
+    }
+
+    fun readMetadataJson(file: File): String? = synchronized(coverLock) {
+        metadataFile(file)
+            .takeIf(File::isFile)
+            ?.readText(Charsets.UTF_8)
+    }
+
+    fun saveMetadataJson(file: File, metadataJson: String) {
+        val target = metadataFile(file)
+        synchronized(coverLock) {
+            val parent = target.parentFile ?: throw java.io.IOException("Cannot create EPUB metadata cache")
+            if (!parent.isDirectory && !parent.mkdirs()) throw java.io.IOException("Cannot create EPUB metadata cache")
+            val temporary = File(parent, "${target.name}.part")
+            try {
+                temporary.writeText(metadataJson, Charsets.UTF_8)
+                if (target.exists() && !target.delete()) throw java.io.IOException("Cannot replace EPUB metadata cache")
+                if (!temporary.renameTo(target)) throw java.io.IOException("Cannot save EPUB metadata cache")
+            } finally {
+                if (temporary.exists()) temporary.delete()
+            }
+        }
     }
 
     fun cachedCover(file: File): File? {
@@ -105,10 +176,12 @@ internal class EpubPrototypeStore(context: Context) {
     fun removeImportedBook(file: File) {
         requireManaged(file)
         synchronized(coverLock) {
+            val metadata = metadataFile(file)
             if (file.exists() && !file.delete()) throw java.io.IOException("Cannot remove managed EPUB copy")
             cachedCover(file)?.let { if (!it.delete()) throw java.io.IOException("Cannot remove EPUB cover thumbnail") }
+            if (metadata.exists() && !metadata.delete()) throw java.io.IOException("Cannot remove EPUB metadata cache")
             preferences.edit {
-                listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme").forEach { remove("$it-${file.name}") }
+                listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme", "chapters").forEach { remove("$it-${file.name}") }
                 if (preferences.getString("latest", null) == file.name) remove("latest")
             }
         }
@@ -122,6 +195,8 @@ internal class EpubPrototypeStore(context: Context) {
         val size: Long,
         val coverFile: File? = null,
         val progression: Float? = null,
+        val addedAt: Long = file.lastModified(),
+        val chapterCount: Int = 0,
     )
 
     fun clearImportedCopies() {
@@ -146,6 +221,18 @@ internal class EpubPrototypeStore(context: Context) {
                     }
                 }
                 if (thumbnails.isEmpty() && !covers.delete()) throw java.io.IOException("Cannot remove EPUB cover cache")
+            }
+            val metadata = File(directory, "metadata")
+            if (metadata.exists()) {
+                val cachedMetadata = metadata.listFiles() ?: throw java.io.IOException("Cannot list EPUB metadata cache")
+                cachedMetadata.forEach { file ->
+                    if (file.isFile && file.extension in setOf("json", "part") && !file.delete()) {
+                        throw java.io.IOException("Cannot remove EPUB metadata cache")
+                    }
+                }
+                val remainingMetadata = metadata.listFiles()
+                    ?: throw java.io.IOException("Cannot list EPUB metadata cache")
+                if (remainingMetadata.isEmpty() && !metadata.delete()) throw java.io.IOException("Cannot remove EPUB metadata cache")
             }
             preferences.edit { clear() }
         }

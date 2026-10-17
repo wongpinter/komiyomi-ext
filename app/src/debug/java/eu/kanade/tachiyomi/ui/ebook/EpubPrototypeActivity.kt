@@ -37,7 +37,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import exh.log.xLogE
 import exh.log.xLogI
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -67,7 +69,17 @@ class EpubPrototypeActivity : BaseActivity() {
     private var readerTheme by mutableStateOf(EpubReaderTheme.SEPIA)
     private var appColorScheme: ColorScheme? = null
     private var currentProgress by mutableFloatStateOf(0f)
+    private var bookDetailsDialog: BottomSheetDialog? = null
+    private var bookDetailsLoadJob: Job? = null
+    private var bookDetailsUi by mutableStateOf<BookDetailsUi?>(null)
     private var pickingBook = false
+
+    private data class BookDetailsUi(
+        val book: EpubPrototypeStore.ImportedEpub,
+        val metadataJson: String?,
+        val loading: Boolean,
+        val error: Boolean,
+    )
     private var pendingTocJump: PendingTocJump? = null
 
     private data class PendingTocJump(val targetHref: String, val startedAtNanos: Long)
@@ -108,6 +120,8 @@ class EpubPrototypeActivity : BaseActivity() {
                     books = books,
                     libraryLoading = loading,
                     libraryError = libraryError,
+                    shelfSettings = model.shelfSettings(),
+                    onShelfSettingsChange = model::saveShelfSettings,
                     onImport = ::launchBookPicker,
                     onOpen = model::openBook,
                     onRemove = ::confirmRemoveBook,
@@ -118,6 +132,7 @@ class EpubPrototypeActivity : BaseActivity() {
                         model.refreshLibrary()
                     },
                     onCancelImport = model::cancelImport,
+                    onDetails = ::showShelfBookDetails,
                     loadCover = model::coverFor,
                 )
             }
@@ -137,6 +152,7 @@ class EpubPrototypeActivity : BaseActivity() {
                         readerTheme = readerTheme,
                         onBack = ::returnToLibrary,
                         onBookmark = ::toggleBookmark,
+                        onDetails = ::showReaderBookDetails,
                         onAppearance = ::showAppearanceSheet,
                     )
                 }
@@ -247,6 +263,86 @@ class EpubPrototypeActivity : BaseActivity() {
                 updateReaderControls(false)
             },
         )
+    }
+
+    private fun showShelfBookDetails(book: EpubPrototypeStore.ImportedEpub) {
+        showBookDetails(book)
+    }
+
+    private fun showReaderBookDetails() {
+        val state = ready ?: return
+        val metadata = state.session.publication.metadata
+        val book = model.books.value.firstOrNull { it.file == state.file }?.copy(
+            title = metadata.title ?: state.file.nameWithoutExtension,
+            authors = metadata.authors.joinToString(", ") { it.name },
+            chapterCount = state.session.publication.readingOrder.size,
+        ) ?: EpubPrototypeStore.ImportedEpub(
+            file = state.file,
+            title = metadata.title ?: state.file.nameWithoutExtension,
+            authors = metadata.authors.joinToString(", ") { it.name },
+            lastOpened = System.currentTimeMillis(),
+            size = state.file.length(),
+            chapterCount = state.session.publication.readingOrder.size,
+        )
+        showBookDetails(book, metadata.toJSON().toString())
+    }
+
+    private fun showBookDetails(
+        book: EpubPrototypeStore.ImportedEpub,
+        initialMetadataJson: String? = null,
+    ) {
+        bookDetailsLoadJob?.cancel()
+        bookDetailsDialog?.dismiss()
+        val dialog = BottomSheetDialog(this)
+        bookDetailsDialog = dialog
+        bookDetailsUi = BookDetailsUi(
+            book = book,
+            metadataJson = initialMetadataJson,
+            loading = initialMetadataJson == null,
+            error = false,
+        )
+        val sheet = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setEpubContent {
+                bookDetailsUi?.let { details ->
+                    EpubBookDetailsContent(
+                        book = details.book,
+                        metadataJson = details.metadataJson,
+                        metadataLoading = details.loading,
+                        metadataError = details.error,
+                        loadCover = model::coverFor,
+                        onClose = dialog::dismiss,
+                    )
+                }
+            }
+        }
+        dialog.setContentView(sheet)
+        dialog.setOnDismissListener {
+            if (bookDetailsDialog === dialog) {
+                bookDetailsDialog = null
+                bookDetailsUi = null
+                bookDetailsLoadJob?.cancel()
+                bookDetailsLoadJob = null
+            }
+        }
+        dialog.show()
+        if (initialMetadataJson == null) {
+            bookDetailsLoadJob = lifecycleScope.launch {
+                try {
+                    val metadataJson = model.metadataJson(book.file)
+                    if (bookDetailsDialog === dialog) {
+                        bookDetailsUi = BookDetailsUi(book, metadataJson, loading = false, error = false)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    xLogE("Unable to read EPUB metadata for details", error)
+                    if (bookDetailsDialog === dialog) {
+                        bookDetailsUi = BookDetailsUi(book, metadataJson = null, loading = false, error = true)
+                    }
+                }
+            }
+        }
     }
 
     private fun confirmRemoveBook(file: java.io.File) {
@@ -656,6 +752,8 @@ class EpubPrototypeActivity : BaseActivity() {
 
     override fun onDestroy() {
         contentsSheet?.dismiss()
+        bookDetailsDialog?.dismiss()
+        bookDetailsLoadJob?.cancel()
         locationJob?.cancel()
         super.onDestroy()
     }

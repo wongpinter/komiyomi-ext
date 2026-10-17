@@ -27,6 +27,19 @@ internal object EpubCoverExtractor {
     private const val THUMBNAIL_WIDTH = 480
     private const val THUMBNAIL_HEIGHT = 720
 
+    fun readingOrderCount(epub: File): Int? = runCatching {
+        ZipFile(epub).use { zip ->
+            val container = zip.getEntry("META-INF/container.xml") ?: return@use null
+            val rootfilePath = readBounded(zip, container, MAX_CONTAINER_BYTES)?.let(::rootfilePath) ?: return@use null
+            val packageEntry = zip.getEntry(rootfilePath) ?: return@use null
+            val packageBytes = readBounded(zip, packageEntry, MAX_PACKAGE_BYTES) ?: return@use null
+            val spine = parseXml(packageBytes)
+                ?.getElementsByTagNameNS("*", "spine")
+                ?.item(0) as? Element ?: return@use null
+            spine.getElementsByTagNameNS("*", "itemref").length
+        }
+    }.getOrNull()
+
     fun writeThumbnail(epub: File, target: File): File? = runCatching {
         val coverBytes = ZipFile(epub).use { zip ->
             val container = zip.getEntry("META-INF/container.xml") ?: return null
