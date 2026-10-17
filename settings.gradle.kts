@@ -46,6 +46,9 @@ rootProject.name = "Komiyomi-Ext"
 include(":app")
 include(":core-metadata")
 include(":core:archive")
+// KMK -->
+include(":core:epub")
+// KMK <--
 include(":core:common")
 include(":data")
 include(":domain")

@@ -79,6 +79,7 @@ fun MoreScreen(
     onClickHistory: () -> Unit,
     // KMK -->
     onClickLibraryUpdateErrors: () -> Unit,
+    onClickEpubPrototype: (() -> Unit)? = null,
     // KMK <--
 ) {
     val uriHandler = LocalUriHandler.current
@@ -120,6 +121,19 @@ fun MoreScreen(
             }
 
             item { HorizontalDivider() }
+
+            // KMK -->
+            if (onClickEpubPrototype != null) {
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(KMR.strings.epub_prototype_title),
+                        subtitle = stringResource(KMR.strings.epub_prototype_summary),
+                        icon = Icons.Outlined.Storage,
+                        onPreferenceClick = onClickEpubPrototype,
+                    )
+                }
+            }
+            // KMK <--
 
             // SY -->
             if (!showNavUpdates) {

@@ -98,6 +98,18 @@ data object MoreTab : Tab {
             // SY <--
             // KMK -->
             onClickLibraryUpdateErrors = { navigator.push(LibraryUpdateErrorScreen()) },
+            onClickEpubPrototype = if (eu.kanade.tachiyomi.BuildConfig.DEBUG) {
+                {
+                    context.startActivity(
+                        android.content.Intent().setClassName(
+                            context,
+                            "eu.kanade.tachiyomi.ui.ebook.EpubPrototypeActivity",
+                        ),
+                    )
+                }
+            } else {
+                null
+            },
             // KMK <--
         )
 

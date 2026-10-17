@@ -1,0 +1,266 @@
+// KMK -->
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+
+package eu.kanade.tachiyomi.ui.ebook
+
+import android.content.Context
+import android.content.SharedPreferences
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import org.json.JSONObject
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.shared.publication.Locator
+import java.io.File
+
+class EpubPrototypeStoreTest {
+    @TempDir lateinit var directory: File
+    private val values = mutableMapOf<String, String?>()
+
+    private fun store(): EpubPrototypeStore {
+        val context = mockk<Context>()
+        val preferences = mockk<SharedPreferences>()
+        val editor = mockk<SharedPreferences.Editor>(relaxed = true)
+        every { context.noBackupFilesDir } returns directory
+        every { context.getSharedPreferences("epub_prototype", Context.MODE_PRIVATE) } returns preferences
+        every { preferences.getString(any(), any()) } answers { values[firstArg()] ?: secondArg() }
+        every { preferences.contains(any()) } answers { values.containsKey(firstArg()) }
+        every { preferences.edit() } returns editor
+        every { editor.putString(any(), any()) } answers {
+            values[firstArg()] = secondArg()
+            editor
+        }
+        every { editor.remove(any()) } answers {
+            values.remove(firstArg<String>())
+            editor
+        }
+        every { editor.clear() } answers {
+            values.clear()
+            editor
+        }
+        return EpubPrototypeStore(context).also {
+            verify(exactly = 1) { context.getSharedPreferences("epub_prototype", Context.MODE_PRIVATE) }
+        }
+    }
+
+    @Test
+    fun `defaults to vertical scrolling with independent per book preferences`() {
+        val store = store()
+        val first = File(store.directory, "first.epub")
+        val second = File(store.directory, "second.epub")
+        assertEquals(true, store.readerPreferences(first).scroll)
+        assertNull(store.readerPreferences(first).theme)
+        store.savePreferences(first, EpubPreferences(scroll = false, fontSize = 1.8))
+        assertEquals(false, store.readerPreferences(first).scroll)
+        assertEquals(1.8, store.readerPreferences(first).fontSize)
+        assertEquals(true, store.readerPreferences(second).scroll)
+    }
+
+    @Test
+    fun `last position overwrites furthest position and stays per book`() {
+        val store = store()
+        val first = File(store.directory, "first.epub")
+        val second = File(store.directory, "second.epub")
+        fun locator(value: String) = mockk<Locator>().also { locator ->
+            val json = mockk<JSONObject>()
+            every { json.toString() } returns value
+            every { locator.toJSON() } returns json
+        }
+        store.saveLocator(first, locator("later"))
+        store.saveLocator(second, locator("other book"))
+        store.saveLocator(first, locator("earlier but most recent"))
+        assertEquals("earlier but most recent", values["location-first.epub"])
+        assertEquals("other book", values["location-second.epub"])
+    }
+
+    @Test
+    fun `resume accepts only existing files within managed directory`() {
+        val store = store()
+        store.directory.mkdirs()
+        val inside = File(store.directory, "book.epub").apply { writeText("fixture") }
+        store.markOpened(inside)
+        assertEquals(inside, store.latestFile())
+        inside.delete()
+        assertNull(store.latestFile())
+        File(directory, "external.epub").writeText("preserve")
+        values["latest"] = "../external.epub"
+        assertNull(store.latestFile())
+    }
+
+    @Test
+    fun `cleanup removes only prototype copies and state not external books`() {
+        val store = store()
+        store.directory.mkdirs()
+        val copy = File(store.directory, "copy.epub").apply { writeText("copy") }
+        val staging = File(store.directory, "copy.part").apply { writeText("partial") }
+        val cover = File(store.directory, "covers/copy.jpg").apply {
+            parentFile.mkdirs()
+            writeText("thumbnail")
+        }
+        val external = File(directory, "original.epub").apply { writeText("original") }
+        store.markOpened(copy)
+        store.clearImportedCopies()
+        assertFalse(copy.exists())
+        assertFalse(staging.exists())
+        assertFalse(cover.exists())
+        assertTrue(external.exists())
+        assertEquals("original", external.readText())
+        assertTrue(values.isEmpty())
+    }
+
+    @Test
+    fun `imported books remain selectable after opening another book`() {
+        val store = store()
+        store.directory.mkdirs()
+        val first = File(store.directory, "first.epub").apply { writeText("first") }
+        val second = File(store.directory, "second.epub").apply { writeText("second") }
+        File(store.directory, "incomplete.part").writeText("partial")
+        store.markOpened(first, title = "First book", authors = "Author One", openedAt = 10L)
+        store.markOpened(second, title = "Second book", authors = "Author Two", openedAt = 20L)
+        assertEquals(listOf("Second book", "First book"), store.importedBooks().map { it.title })
+        assertEquals(listOf(second, first), store.importedBooks().map { it.file })
+        store.markOpened(first, openedAt = 30L)
+        assertEquals(first, store.latestFile())
+        assertEquals("First book", store.importedBooks().first().title)
+        assertEquals("Author One", store.importedBooks().first().authors)
+    }
+
+    @Test
+    fun `deleting one book preserves other book preferences and progress`() {
+        val store = store()
+        store.directory.mkdirs()
+        val first = File(store.directory, "first.epub").apply { writeText("first") }
+        val second = File(store.directory, "second.epub").apply { writeText("second") }
+        store.markOpened(first)
+        store.markOpened(second)
+        store.savePreferences(first, EpubPreferences(scroll = false))
+        store.saveReaderThemeName(first, "DARK")
+        store.saveReaderThemeName(second, "LIGHT")
+        values["location-first.epub"] = "first position"
+        values["location-second.epub"] = "second position"
+        store.removeImportedBook(first)
+        assertFalse(first.exists())
+        assertTrue(second.exists())
+        assertEquals(second, store.latestFile())
+        assertFalse(values.containsKey("location-first.epub"))
+        assertFalse(values.containsKey("preferences-first.epub"))
+        assertFalse(values.containsKey("theme-first.epub"))
+        assertEquals("LIGHT", store.readerThemeName(second))
+        assertEquals("second position", values["location-second.epub"])
+        store.removeImportedBook(second)
+        assertNull(store.latestFile())
+        assertTrue(store.importedBooks().isEmpty())
+    }
+
+    @Test
+    fun `bookmark toggles per book and is removed with that imported copy`() {
+        val store = store()
+        store.directory.mkdirs()
+        val book = File(store.directory, "book.epub").apply { writeText("book") }
+        val locator = mockk<Locator>().also {
+            val json = mockk<JSONObject>()
+            every { json.toString() } returns "{\"href\":\"chapter.xhtml\"}"
+            every { it.toJSON() } returns json
+        }
+
+        assertFalse(store.hasBookmark(book))
+        assertTrue(store.toggleBookmark(book, locator))
+        assertTrue(store.hasBookmark(book))
+        assertFalse(store.toggleBookmark(book, locator))
+        assertFalse(store.hasBookmark(book))
+        assertTrue(store.toggleBookmark(book, locator))
+        store.removeImportedBook(book)
+        assertFalse(values.containsKey("bookmark-book.epub"))
+    }
+
+    @Test
+    fun `imported book actions reject external files and traversal`() {
+        val store = store()
+        store.directory.mkdirs()
+        val external = File(directory, "original.epub").apply { writeText("keep") }
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) {
+            store.removeImportedBook(external)
+        }
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) {
+            store.markOpened(File(store.directory, "../original.epub"))
+        }
+        assertEquals("keep", external.readText())
+    }
+
+    @Test
+    fun `legacy imports without metadata remain discoverable`() {
+        val store = store()
+        store.directory.mkdirs()
+        val legacy = File(store.directory, "legacy.epub").apply { writeText("existing") }
+        val book = store.importedBooks().single()
+        assertEquals(legacy, book.file)
+        assertEquals("legacy", book.title)
+        assertEquals(8L, book.size)
+    }
+
+    @Test
+    fun `font choice persists per book and resets without dropping other preferences`() {
+        val store = store()
+        val first = File(store.directory, "first.epub")
+        val second = File(store.directory, "second.epub")
+        val original = EpubPreferences(scroll = false, fontSize = 1.6, pageMargins = 1.2)
+        val literata = EpubPrototypeFonts.families.first().fontFamily
+        val lora = EpubPrototypeFonts.families[2].fontFamily
+        store.savePreferences(first, EpubPrototypeFonts.select(original, literata))
+        store.savePreferences(second, EpubPrototypeFonts.select(EpubPreferences(scroll = true), lora))
+
+        // A new store instance must recover the serialized font family, not a process-local field.
+        val reopened = store()
+        assertEquals(literata, reopened.readerPreferences(first).fontFamily)
+        assertEquals(lora, reopened.readerPreferences(second).fontFamily)
+        reopened.savePreferences(first, EpubPrototypeFonts.select(reopened.readerPreferences(first), null))
+        assertEquals(original, reopened.readerPreferences(first))
+        assertEquals(lora, reopened.readerPreferences(second).fontFamily)
+    }
+
+    @Test
+    fun `layout preferences persist independently across books and publisher reset`() {
+        val store = store()
+        val first = File(store.directory, "first.epub")
+        val second = File(store.directory, "second.epub")
+        val original = EpubPreferences(scroll = true, fontSize = 1.5, fontFamily = EpubPrototypeFonts.families.first().fontFamily)
+        var custom = EpubPrototypeLayout.set(original, EpubPrototypeLayout.Metric.MARGINS, 1.8)
+        custom = EpubPrototypeLayout.set(custom, EpubPrototypeLayout.Metric.LINE_HEIGHT, 1.6)
+        custom = EpubPrototypeLayout.set(custom, EpubPrototypeLayout.Metric.PARAGRAPH_SPACING, 0.6)
+        custom = EpubPrototypeLayout.set(custom, EpubPrototypeLayout.Metric.PARAGRAPH_INDENT, 1.2)
+        custom = EpubPrototypeLayout.align(custom, org.readium.r2.navigator.preferences.TextAlign.JUSTIFY)
+        store.savePreferences(first, custom)
+        store.savePreferences(second, EpubPreferences(scroll = false, pageMargins = 0.4))
+        val reopened = store()
+        assertEquals(custom, reopened.readerPreferences(first))
+        assertEquals(0.4, reopened.readerPreferences(second).pageMargins)
+        assertNull(reopened.readerPreferences(second).lineHeight)
+        reopened.savePreferences(first, EpubPrototypeLayout.reset(reopened.readerPreferences(first)))
+        assertEquals(original, store().readerPreferences(first))
+        assertEquals(0.4, reopened.readerPreferences(second).pageMargins)
+    }
+
+    @Test
+    fun `reader theme persists with the selected book`() {
+        val store = store()
+        val book = File(store.directory, "book.epub")
+        store.saveReaderThemeName(book, EpubReaderTheme.DARK.name)
+
+        assertEquals(EpubReaderTheme.DARK.name, store().readerThemeName(book))
+        assertEquals(EpubReaderTheme.SEPIA, EpubReaderTheme.fromStoredName(store().readerThemeName(File(store.directory, "other.epub"))))
+    }
+
+    @Test
+    fun `corrupt preferences recover to scrolling defaults`() {
+        val store = store()
+        values["preferences-book.epub"] = "broken"
+        assertEquals(true, store.readerPreferences(File(store.directory, "book.epub")).scroll)
+    }
+}
+// KMK <--

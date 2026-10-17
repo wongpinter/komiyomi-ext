@@ -187,7 +187,35 @@ kotlin {
     }
 }
 
+// KMK -->
+val epubNavigatorReference by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+val epubPhotoViewReference by configurations.creating {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+val verifyEpubPhotoView by tasks.registering(mihon.buildlogic.VerifyEpubPhotoView::class) {
+    navigatorAar.set(layout.file(providers.provider { epubNavigatorReference.singleFile }))
+    photoViewAar.set(layout.file(providers.provider { epubPhotoViewReference.singleFile }))
+}
+configurations.configureEach {
+    if (name.startsWith("debug") && name.endsWith("RuntimeClasspath")) {
+        // Readium embeds the EXACT existing PhotoView 2.3.0 classes; verified before use.
+        exclude(group = "com.github.chrisbanes", module = "PhotoView")
+    }
+}
+tasks.matching { it.name == "checkDebugDuplicateClasses" || it.name == "testDebugUnitTest" }.configureEach {
+    dependsOn(verifyEpubPhotoView)
+}
+// KMK <--
+
 dependencies {
+    // KMK -->
+    add(epubNavigatorReference.name, libs.readium.navigator)
+    add(epubPhotoViewReference.name, libs.photoview)
+    // KMK <--
     implementation(projects.i18n)
     // KMK -->
     implementation(projects.i18nKmk)
@@ -196,6 +224,9 @@ dependencies {
     implementation(projects.i18nSy)
     // SY <--
     implementation(projects.core.archive)
+    // KMK -->
+    debugImplementation(projects.core.epub)
+    // KMK <--
     implementation(projects.core.common)
     implementation(projects.coreMetadata)
     implementation(projects.sourceApi)
