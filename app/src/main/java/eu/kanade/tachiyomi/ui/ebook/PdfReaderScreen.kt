@@ -86,6 +86,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -124,10 +125,14 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -154,10 +159,28 @@ internal class PdfDocumentSession private constructor(
     )
 
     val pageCount: Int = renderer.pageCount
+    private val pageAspectRatios = FloatArray(pageCount)
     private val renderLock = Any()
+    private val rendererMutex = Mutex()
     private var closed = false
     private val pageCache = object : LruCache<PageKey, Bitmap>(cacheBytes()) {
         override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount
+    }
+
+    fun pageAspectRatio(index: Int): Float = synchronized(renderLock) {
+        check(!closed) { "PDF session is closed" }
+        require(index in 0 until pageCount) { "PDF page index is out of range" }
+        pageAspectRatios[index].takeIf { it > 0f }?.let { return@synchronized it }
+
+        renderer.openPage(index).use { page ->
+            val aspectRatio = page.width.coerceAtLeast(1).toFloat() / page.height.coerceAtLeast(1)
+            pageAspectRatios[index] = aspectRatio
+            aspectRatio
+        }
+    }
+
+    suspend fun pageAspectRatioAsync(index: Int): Float = rendererMutex.withLock {
+        withContext(Dispatchers.IO) { pageAspectRatio(index) }
     }
 
     fun renderPage(
@@ -177,6 +200,7 @@ internal class PdfDocumentSession private constructor(
         renderer.openPage(index).use { page ->
             val pageWidth = page.width.coerceAtLeast(1)
             val pageHeight = page.height.coerceAtLeast(1)
+            pageAspectRatios[index] = pageWidth.toFloat() / pageHeight
             val widthScale = width.toFloat() / pageWidth
             val fitScale = if (fit == PdfFitMode.PAGE && height > 0) {
                 min(widthScale, height.toFloat() / pageHeight)
@@ -202,6 +226,37 @@ internal class PdfDocumentSession private constructor(
         }
     }
 
+    suspend fun renderPageAsync(
+        index: Int,
+        requestedWidth: Int,
+        requestedHeight: Int = 0,
+        fit: PdfFitMode = PdfFitMode.WIDTH,
+        trimMargins: Boolean = false,
+    ): Bitmap = rendererMutex.withLock {
+        withContext(Dispatchers.Default) {
+            renderPage(index, requestedWidth, requestedHeight, fit, trimMargins)
+        }
+    }
+
+    suspend fun prefetchPage(
+        index: Int,
+        requestedWidth: Int,
+        requestedHeight: Int,
+        fit: PdfFitMode,
+        trimMargins: Boolean,
+    ) {
+        if (index !in 0 until pageCount) return
+        currentCoroutineContext().ensureActive()
+        try {
+            renderPageAsync(index, requestedWidth, requestedHeight, fit, trimMargins)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // Prefetch is opportunistic; a requested page reports its own rendering failure.
+        }
+        currentCoroutineContext().ensureActive()
+    }
+
     override fun close() {
         synchronized(renderLock) {
             if (closed) return
@@ -223,10 +278,12 @@ internal class PdfDocumentSession private constructor(
         val matchingPages = mutableListOf<Int>()
         for (index in 0 until pageCount) {
             currentCoroutineContext().ensureActive()
-            val pageHasMatch = synchronized(renderLock) {
-                check(!closed) { "PDF session is closed" }
-                renderer.openPage(index).use { page ->
-                    page.searchText(normalizedQuery).isNotEmpty()
+            val pageHasMatch = rendererMutex.withLock {
+                synchronized(renderLock) {
+                    check(!closed) { "PDF session is closed" }
+                    renderer.openPage(index).use { page ->
+                        page.searchText(normalizedQuery).isNotEmpty()
+                    }
                 }
             }
             if (pageHasMatch) matchingPages += index
@@ -280,7 +337,7 @@ internal class PdfDocumentSession private constructor(
         private const val CONTENT_THRESHOLD = 246
         private const val CROP_PADDING = 0.015f
         private const val MIN_CROP_RATIO = 0.92f
-        private const val MIN_CACHE_BYTES = 4L * 1024 * 1024
+        private const val MIN_CACHE_BYTES = 8L * 1024 * 1024
         private const val MAX_CACHE_BYTES = 12L * 1024 * 1024
 
         fun open(file: File): PdfDocumentSession {
@@ -327,6 +384,8 @@ internal fun PdfReaderScreen(
     var scrubValue by remember(file) { mutableFloatStateOf(safeInitialPage.toFloat()) }
     var isScrubbing by remember { mutableStateOf(false) }
     var currentZoom by remember(file) { mutableFloatStateOf(1f) }
+    var prefetchDirection by remember(session) { mutableIntStateOf(1) }
+    val pageAspectRatioStates = remember(session) { mutableMapOf<Int, MutableState<Float?>>() }
     var activeSheet by remember { mutableStateOf<PdfSheet?>(null) }
     var pageNavigationTab by remember(file) { mutableIntStateOf(1) }
 
@@ -340,7 +399,14 @@ internal fun PdfReaderScreen(
             index.coerceIn(0, pageCount - 1)
         }
     }
+    val visiblePageIndices by remember(settings.layout, verticalState, horizontalState) {
+        derivedStateOf {
+            val listState = if (settings.layout == PdfLayoutMode.CONTINUOUS) verticalState else horizontalState
+            listState.layoutInfo.visibleItemsInfo.map { it.index }.toSet()
+        }
+    }
     val widthPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
+    val heightPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
     val colorFilter = remember(settings.color) { settings.color.toColorFilter() }
     val canvasColor = when (settings.color) {
         PdfColorMode.ORIGINAL -> Color(0xFF3A3A3A)
@@ -371,6 +437,85 @@ internal fun PdfReaderScreen(
     LaunchedEffect(currentPage) {
         currentZoom = 1f
     }
+    LaunchedEffect(settings.layout, verticalState, horizontalState) {
+        val listState = if (settings.layout == PdfLayoutMode.CONTINUOUS) verticalState else horizontalState
+        var previousPosition: Pair<Int, Int>? = null
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { position ->
+                previousPosition?.let { previous ->
+                    val direction = when {
+                        position.first < previous.first -> -1
+                        position.first > previous.first -> 1
+                        position.second < previous.second -> -1
+                        position.second > previous.second -> 1
+                        else -> prefetchDirection
+                    }
+                    if (direction != prefetchDirection) prefetchDirection = direction
+                }
+                previousPosition = position
+            }
+    }
+    LaunchedEffect(session, settings.layout, settings.fit, settings.trimMargins, widthPx, heightPx) {
+        val listState = if (settings.layout == PdfLayoutMode.CONTINUOUS) verticalState else horizontalState
+        val pageFit = if (settings.layout == PdfLayoutMode.PAGINATED) PdfFitMode.PAGE else settings.fit
+        val requestedHeight = if (pageFit == PdfFitMode.PAGE) heightPx else 0
+        snapshotFlow {
+            Triple(
+                listState.isScrollInProgress,
+                listState.layoutInfo.visibleItemsInfo.map { it.index },
+                prefetchDirection,
+            )
+        }
+            .distinctUntilChanged()
+            .collectLatest { (isScrolling, visibleIndices, direction) ->
+                if (visibleIndices.isEmpty()) return@collectLatest
+                val anchorPage = if (direction > 0) visibleIndices.maxOrNull() else visibleIndices.minOrNull()
+                if (anchorPage != null) {
+                    val geometryDirections = if (isScrolling) listOf(direction) else listOf(direction, -direction)
+                    val geometryPages = buildList {
+                        geometryDirections.forEach { geometryDirection ->
+                            repeat(PDF_GEOMETRY_PREFETCH_COUNT) { offset ->
+                                val page = anchorPage + geometryDirection * (offset + 1)
+                                if (page in 0 until pageCount) add(page)
+                            }
+                        }
+                    }
+                    val geometry = withContext(Dispatchers.IO) {
+                        buildMap {
+                            geometryPages.forEach { page ->
+                                currentCoroutineContext().ensureActive()
+                                val aspectRatio = try {
+                                    session.pageAspectRatioAsync(page)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                if (aspectRatio != null) put(page, aspectRatio)
+                            }
+                        }
+                    }
+                    geometry.forEach { (page, aspectRatio) ->
+                        val ratioState = pageAspectRatioStates.getOrPut(page) { mutableStateOf(null) }
+                        if (ratioState.value == null) ratioState.value = aspectRatio
+                    }
+
+                    if (!isScrolling) {
+                        delay(PDF_RENDER_PREFETCH_IDLE_DELAY_MS)
+                        if (!listState.isScrollInProgress) {
+                            session.prefetchPage(
+                                index = anchorPage + direction,
+                                requestedWidth = widthPx,
+                                requestedHeight = requestedHeight,
+                                fit = pageFit,
+                                trimMargins = settings.trimMargins,
+                            )
+                        }
+                    }
+                }
+            }
+    }
 
     fun updateSettings(updated: PdfReaderSettings) {
         if (updated != settings) {
@@ -381,12 +526,33 @@ internal fun PdfReaderScreen(
 
     fun jumpToPage(page: Int, smooth: Boolean = true) {
         val target = page.coerceIn(0, pageCount - 1)
+        val isFarJump = kotlin.math.abs(target - currentPage) > PDF_SMOOTH_JUMP_MAX_PAGES
         if (target != currentPage) returnPage = currentPage
         scope.launch {
-            if (settings.layout == PdfLayoutMode.CONTINUOUS) {
-                if (smooth) verticalState.animateScrollToItem(target) else verticalState.scrollToItem(target)
+            val listState = if (settings.layout == PdfLayoutMode.CONTINUOUS) verticalState else horizontalState
+            if (smooth && !isFarJump) {
+                listState.animateScrollToItem(target)
             } else {
-                if (smooth) horizontalState.animateScrollToItem(target) else horizontalState.scrollToItem(target)
+                if (isFarJump) {
+                    val pageFit = if (settings.layout == PdfLayoutMode.PAGINATED) PdfFitMode.PAGE else settings.fit
+                    val requestedHeight = if (pageFit == PdfFitMode.PAGE) heightPx else 0
+                    try {
+                        val bitmap = session.renderPageAsync(
+                            index = target,
+                            requestedWidth = widthPx,
+                            requestedHeight = requestedHeight,
+                            fit = pageFit,
+                            trimMargins = settings.trimMargins,
+                        )
+                        val ratio = bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1)
+                        pageAspectRatioStates.getOrPut(target) { mutableStateOf(null) }.value = ratio
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        // Navigate even when the optional target-page pre-render fails.
+                    }
+                }
+                listState.scrollToItem(target)
             }
         }
     }
@@ -462,6 +628,8 @@ internal fun PdfReaderScreen(
                             Modifier.fillParentMaxWidth()
                         },
                         allowZoom = true,
+                        shouldRenderPage = pageIndex in visiblePageIndices || pageIndex == currentPage,
+                        aspectRatioState = pageAspectRatioStates.getOrPut(pageIndex) { mutableStateOf(null) },
                         onTap = ::handlePageTap,
                         onZoomChanged = { if (pageIndex == currentPage) currentZoom = it },
                     )
@@ -486,6 +654,8 @@ internal fun PdfReaderScreen(
                         fillViewport = true,
                         modifier = Modifier.fillParentMaxSize().padding(vertical = settings.pageGapDp.dp),
                         allowZoom = true,
+                        shouldRenderPage = pageIndex in visiblePageIndices || pageIndex == currentPage,
+                        aspectRatioState = pageAspectRatioStates.getOrPut(pageIndex) { mutableStateOf(null) },
                         onTap = ::handlePageTap,
                         onZoomChanged = { if (pageIndex == currentPage) currentZoom = it },
                     )
@@ -767,23 +937,33 @@ private fun PdfPage(
     fillViewport: Boolean,
     modifier: Modifier,
     allowZoom: Boolean,
+    shouldRenderPage: Boolean,
+    aspectRatioState: MutableState<Float?>,
     onTap: (Offset, IntSize) -> Unit,
     onZoomChanged: (Float) -> Unit = {},
 ) {
     var zoomScale by remember(session, pageIndex) { mutableFloatStateOf(1f) }
     var translation by remember(session, pageIndex) { mutableStateOf(Offset.Zero) }
     var viewportSize by remember(session, pageIndex) { mutableStateOf(IntSize.Zero) }
-    val pageState by produceState<PdfPageState>(PdfPageState.Loading, session, pageIndex, requestedWidth, requestedHeight, fit, trimMargins) {
-        value = try {
-            PdfPageState.Ready(
-                withContext(Dispatchers.IO) {
-                    session.renderPage(pageIndex, requestedWidth, requestedHeight, fit, trimMargins)
-                },
-            )
+    val knownAspectRatio by aspectRatioState
+    var pageState by remember(session, pageIndex, requestedWidth, requestedHeight, fit, trimMargins) {
+        mutableStateOf<PdfPageState>(PdfPageState.Loading(knownAspectRatio ?: DEFAULT_PDF_PAGE_ASPECT_RATIO))
+    }
+    LaunchedEffect(session, pageIndex, requestedWidth, requestedHeight, fit, trimMargins, shouldRenderPage) {
+        if (!shouldRenderPage || pageState is PdfPageState.Ready) return@LaunchedEffect
+        var aspectRatio = pageState.aspectRatio
+        try {
+            aspectRatio = session.pageAspectRatioAsync(pageIndex)
+            pageState = PdfPageState.Loading(aspectRatio)
+            aspectRatioState.value = aspectRatio
+            val bitmap = session.renderPageAsync(pageIndex, requestedWidth, requestedHeight, fit, trimMargins)
+            val renderedAspectRatio = if (trimMargins) bitmap.width.toFloat() / bitmap.height else aspectRatio
+            pageState = PdfPageState.Ready(bitmap = bitmap, aspectRatio = renderedAspectRatio)
+            aspectRatioState.value = renderedAspectRatio
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            PdfPageState.Failed
+            pageState = PdfPageState.Failed(aspectRatio)
         }
     }
 
@@ -853,8 +1033,21 @@ private fun PdfPage(
         Modifier
     }
 
+    val pageAspectRatio = knownAspectRatio ?: pageState.aspectRatio
+    val zoomModifier = if (zoomScale > 1.01f || translation != Offset.Zero) {
+        Modifier.graphicsLayer {
+            scaleX = zoomScale
+            scaleY = zoomScale
+            translationX = translation.x
+            translationY = translation.y
+        }
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = modifier
+            .then(if (fillViewport) Modifier else Modifier.aspectRatio(pageAspectRatio))
             .background(MaterialTheme.colorScheme.surface)
             .onSizeChanged { viewportSize = it }
             .clipToBounds()
@@ -862,29 +1055,31 @@ private fun PdfPage(
         contentAlignment = Alignment.Center,
     ) {
         when (val state = pageState) {
-            PdfPageState.Loading -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            is PdfPageState.Loading -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
             is PdfPageState.Ready -> Image(
                 bitmap = state.bitmap.asImageBitmap(),
                 contentDescription = stringResource(KMR.strings.ebook_pdf_page_description, pageIndex + 1),
                 modifier = (if (fillViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth().aspectRatio(state.bitmap.width.toFloat() / state.bitmap.height))
-                    .graphicsLayer {
-                        scaleX = zoomScale
-                        scaleY = zoomScale
-                        translationX = translation.x
-                        translationY = translation.y
-                    },
+                    .then(zoomModifier),
                 contentScale = if (fillViewport) ContentScale.Fit else ContentScale.FillWidth,
                 colorFilter = colorFilter,
             )
-            PdfPageState.Failed -> Text(stringResource(KMR.strings.ebook_pdf_page_failed), color = MaterialTheme.colorScheme.error)
+            is PdfPageState.Failed -> Text(stringResource(KMR.strings.ebook_pdf_page_failed), color = MaterialTheme.colorScheme.error)
         }
     }
 }
 
+private const val DEFAULT_PDF_PAGE_ASPECT_RATIO = 0.707f
+private const val PDF_SMOOTH_JUMP_MAX_PAGES = 3
+private const val PDF_GEOMETRY_PREFETCH_COUNT = 6
+private const val PDF_RENDER_PREFETCH_IDLE_DELAY_MS = 500L
+
 private sealed interface PdfPageState {
-    data object Loading : PdfPageState
-    data class Ready(val bitmap: Bitmap) : PdfPageState
-    data object Failed : PdfPageState
+    val aspectRatio: Float
+
+    data class Loading(override val aspectRatio: Float) : PdfPageState
+    data class Ready(val bitmap: Bitmap, override val aspectRatio: Float) : PdfPageState
+    data class Failed(override val aspectRatio: Float) : PdfPageState
 }
 
 @Composable
@@ -1086,9 +1281,7 @@ private fun PdfThumbnail(
 ) {
     val bitmap by produceState<Bitmap?>(null, session, pageIndex, trimMargins) {
         value = runCatching {
-            withContext(Dispatchers.IO) {
-                session.renderPage(pageIndex, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, PdfFitMode.PAGE, trimMargins)
-            }
+            session.renderPageAsync(pageIndex, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, PdfFitMode.PAGE, trimMargins)
         }.getOrNull()
     }
     Box(
