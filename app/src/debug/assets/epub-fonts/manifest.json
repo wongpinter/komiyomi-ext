@@ -1,7 +1,7 @@
 {
     "downloadedOn":  "2026-10-17",
     "source":  "https://github.com/google/fonts",
-    "scope":  "Debug EPUB assets only; registered by EpubPrototypeFonts for the experimental reader",
+    "scope":  "Production EPUB font assets registered by EpubFonts for the ebook reader",
     "families":  [
                      {
                          "name":  "Literata",

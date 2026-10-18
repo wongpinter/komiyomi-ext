@@ -1,18 +1,26 @@
 // KMK -->
+// App-managed ebook shelf, import, and reading state.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
 
 import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
+import android.util.Base64
 import androidx.core.content.edit
 import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.shared.publication.Locator
 import java.io.File
+import java.security.MessageDigest
 
-/** Prototype-only state, isolated from manga preferences/database and standard backups. */
-internal class EpubPrototypeStore(context: Context) {
+/** Ebook shelf state, kept separate from manga preferences and database. */
+internal class EpubStore(context: Context) {
+    // KMK -->
+    // Keep these established storage identifiers so upgrades retain imported books and progress.
+    // KMK <--
     private val preferences = context.getSharedPreferences("epub_prototype", Context.MODE_PRIVATE)
     private val shelfPreferences = context.getSharedPreferences("epub_shelf", Context.MODE_PRIVATE)
     val directory = File(context.noBackupFilesDir, "epub-prototype")
@@ -27,6 +35,37 @@ internal class EpubPrototypeStore(context: Context) {
         val layout: String = "GRID",
         val coverSize: Int = 96,
     )
+
+    internal data class FolderSource(val uri: String, val name: String)
+
+    private data class FolderImportOwner(val folderUri: String, val category: String)
+
+    fun folderSources(): List<FolderSource> = runCatching {
+        val entries = org.json.JSONArray(shelfPreferences.getString("folderSources", "[]"))
+        List(entries.length()) { index ->
+            val entry = entries.getJSONObject(index)
+            FolderSource(entry.getString("uri"), entry.getString("name"))
+        }
+    }.getOrDefault(emptyList())
+
+    fun addFolderSource(uri: Uri, name: String): FolderSource {
+        val source = FolderSource(uri.toString(), name)
+        val updated = folderSources().filterNot { it.uri == source.uri } + source
+        saveFolderSources(updated)
+        return source
+    }
+
+    fun removeFolderSource(uri: String) {
+        saveFolderSources(folderSources().filterNot { it.uri == uri })
+    }
+
+    private fun saveFolderSources(sources: List<FolderSource>) {
+        val entries = org.json.JSONArray()
+        sources.forEach { source ->
+            entries.put(org.json.JSONObject().put("uri", source.uri).put("name", source.name))
+        }
+        shelfPreferences.edit { putString("folderSources", entries.toString()) }
+    }
 
     fun shelfSettings(): ShelfSettings = ShelfSettings(
         query = shelfPreferences.getString("query", "").orEmpty(),
@@ -99,9 +138,118 @@ internal class EpubPrototypeStore(context: Context) {
                     progression = progress,
                     addedAt = file.lastModified(),
                     chapterCount = chapterCount,
+                    category = preferences.getString("category-${file.name}", null),
                 )
             }
             .sortedWith(compareByDescending<ImportedEpub> { it.lastOpened }.thenBy { it.title })
+    }
+
+    fun importedFileForSource(uri: Uri): File? {
+        val key = sourceImportKey(uri)
+        val name = preferences.getString(key, null) ?: return null
+        val file = File(directory, name)
+        if (file.isFile && file.extension == "epub" && file.canonicalFile.parentFile == directory.canonicalFile) return file
+        preferences.edit { remove(key) }
+        return null
+    }
+
+    fun recordFolderImport(uri: Uri, file: File, category: String, fallbackTitle: String, folderUri: String) {
+        requireManaged(file)
+        val ownersKey = sourceOwnersKey(uri)
+        val owners = folderImportOwners(uri).filterNot { it.folderUri == folderUri } + FolderImportOwner(folderUri, category)
+        preferences.edit {
+            putString(sourceImportKey(uri), file.name)
+            putString(ownersKey, encodeFolderImportOwners(owners))
+            putString("category-${file.name}", category)
+            val titleKey = "title-${file.name}"
+            if (!preferences.contains(titleKey)) putString(titleKey, fallbackTitle.substringBeforeLast('.', fallbackTitle).take(512))
+        }
+    }
+
+    fun removeFolderImports(folderUri: String, sourceUris: Collection<Uri>) {
+        synchronized(coverLock) {
+            preferences.all.keys.filter { it.startsWith("source-owners-") }.forEach { ownersKey ->
+                val owners = folderImportOwners(ownersKey)
+                val remainingOwners = owners.filterNot { it.folderUri == folderUri }
+                if (remainingOwners.size == owners.size) return@forEach
+
+                val sourceKey = sourceFileKeyForOwners(ownersKey)
+                val file = managedFile(preferences.getString(sourceKey, null))
+                if (file == null) {
+                    preferences.edit {
+                        remove(sourceKey)
+                        remove(ownersKey)
+                    }
+                } else if (remainingOwners.isEmpty()) {
+                    removeImportedBook(file)
+                } else {
+                    preferences.edit {
+                        putString(ownersKey, encodeFolderImportOwners(remainingOwners))
+                        putString("category-${file.name}", remainingOwners.last().category)
+                    }
+                }
+            }
+
+            sourceUris.forEach { uri -> removeFolderImport(uri, folderUri) }
+        }
+    }
+
+    private fun removeFolderImport(uri: Uri, folderUri: String) {
+        val sourceKey = sourceImportKey(uri)
+        val ownersKey = sourceOwnersKey(uri)
+        val owners = folderImportOwners(uri)
+        if (owners.isNotEmpty() && owners.none { it.folderUri == folderUri }) return
+
+        val remainingOwners = owners.filterNot { it.folderUri == folderUri }
+        val file = managedFile(preferences.getString(sourceKey, null))
+        if (file == null) {
+            preferences.edit {
+                remove(sourceKey)
+                remove(ownersKey)
+            }
+        } else if (remainingOwners.isEmpty()) {
+            // Empty owner metadata is a legacy import and belongs to the folder being removed.
+            removeImportedBook(file)
+        } else {
+            preferences.edit {
+                putString(ownersKey, encodeFolderImportOwners(remainingOwners))
+                putString("category-${file.name}", remainingOwners.last().category)
+            }
+        }
+    }
+
+    private fun managedFile(name: String?): File? = name?.let { File(directory, it) }?.takeIf {
+        it.isFile && it.extension == "epub" && it.canonicalFile.parentFile == directory.canonicalFile
+    }
+
+    private fun folderImportOwners(uri: Uri): List<FolderImportOwner> = folderImportOwners(sourceOwnersKey(uri))
+
+    private fun folderImportOwners(ownersKey: String): List<FolderImportOwner> = runCatching {
+        val entries = org.json.JSONArray(preferences.getString(ownersKey, "[]"))
+        List(entries.length()) { index ->
+            val entry = entries.getJSONObject(index)
+            FolderImportOwner(entry.getString("folderUri"), entry.getString("category"))
+        }
+    }.getOrDefault(emptyList())
+
+    private fun encodeFolderImportOwners(owners: List<FolderImportOwner>): String = org.json.JSONArray().apply {
+        owners.forEach { owner ->
+            put(org.json.JSONObject().put("folderUri", owner.folderUri).put("category", owner.category))
+        }
+    }.toString()
+
+    private fun sourceOwnersKey(uri: Uri): String = sourceOwnersKey(sourceImportKey(uri))
+
+    private fun sourceOwnersKey(sourceKey: String): String = "source-owners-${sourceKey.removePrefix("source-file-")}"
+
+    private fun sourceFileKeyForOwners(ownersKey: String): String = "source-file-${ownersKey.removePrefix("source-owners-")}"
+
+    private fun sourceImportKey(uri: Uri): String {
+        val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrElse { uri.toString() }
+        val identity = "${uri.authority.orEmpty()}:$documentId"
+        val digest = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray(Charsets.UTF_8))
+        val encoded = Base64.encodeToString(digest, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        return "source-file-$encoded"
     }
 
     private fun metadataFile(file: File): File {
@@ -177,11 +325,18 @@ internal class EpubPrototypeStore(context: Context) {
         requireManaged(file)
         synchronized(coverLock) {
             val metadata = metadataFile(file)
+            val sourceKeys = preferences.all
+                .filter { (key, value) -> key.startsWith("source-file-") && value == file.name }
+                .keys
+            val ownersKeys = sourceKeys.map(::sourceOwnersKey)
             if (file.exists() && !file.delete()) throw java.io.IOException("Cannot remove managed EPUB copy")
             cachedCover(file)?.let { if (!it.delete()) throw java.io.IOException("Cannot remove EPUB cover thumbnail") }
             if (metadata.exists() && !metadata.delete()) throw java.io.IOException("Cannot remove EPUB metadata cache")
             preferences.edit {
                 listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme", "chapters").forEach { remove("$it-${file.name}") }
+                remove("category-${file.name}")
+                sourceKeys.forEach { remove(it) }
+                ownersKeys.forEach { remove(it) }
                 if (preferences.getString("latest", null) == file.name) remove("latest")
             }
         }
@@ -197,10 +352,11 @@ internal class EpubPrototypeStore(context: Context) {
         val progression: Float? = null,
         val addedAt: Long = file.lastModified(),
         val chapterCount: Int = 0,
+        val category: String? = null,
     )
 
     fun clearImportedCopies() {
-        // This directory contains ONLY app-created prototype files, never user-selected originals.
+        // This directory contains only app-managed copies, never user-selected originals.
         synchronized(coverLock) {
             val files = if (directory.exists()) {
                 directory.listFiles() ?: throw java.io.IOException("Cannot list managed EPUB copies")
@@ -252,7 +408,7 @@ internal class EpubPrototypeStore(context: Context) {
                 json.decodeFromString<EpubPreferences>(it)
             }
         }.getOrNull() ?: EpubPreferences(scroll = true)
-        val normalized = EpubPrototypeFonts.normalize(restored)
+        val normalized = EpubFonts.normalize(restored)
         if (normalized != restored) savePreferences(file, normalized)
         return normalized
     }

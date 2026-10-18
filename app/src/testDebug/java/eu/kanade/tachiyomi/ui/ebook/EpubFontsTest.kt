@@ -1,4 +1,5 @@
 // KMK -->
+// Reading font preference coverage.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -14,37 +15,37 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class EpubPrototypeFontsTest {
+class EpubFontsTest {
     @Test
     fun `six distinct font families preserve source order`() {
         assertEquals(
             listOf("Literata", "Crimson Pro", "Bitter", "Merriweather", "Inter", "Atkinson Hyperlegible Next"),
-            EpubPrototypeFonts.families.map { it.name },
+            EpubFonts.families.map { it.name },
         )
-        assertEquals(6, EpubPrototypeFonts.families.map { it.fontFamily }.distinct().size)
+        assertEquals(6, EpubFonts.families.map { it.fontFamily }.distinct().size)
     }
 
     @Test
     fun `font selection preserves preferences and publisher reset restores embedded fonts`() {
         val original = EpubPreferences(scroll = true, fontSize = 1.7, pageMargins = 1.4, publisherStyles = false)
-        EpubPrototypeFonts.families.forEach { family ->
-            val changed = EpubPrototypeFonts.select(original, family.fontFamily)
+        EpubFonts.families.forEach { family ->
+            val changed = EpubFonts.select(original, family.fontFamily)
             assertEquals(family.fontFamily, changed.fontFamily)
-            assertEquals(original.copy(publisherStyles = true), EpubPrototypeFonts.select(changed, null))
+            assertEquals(original.copy(publisherStyles = true), EpubFonts.select(changed, null))
         }
     }
 
     @Test
     fun `unknown font names cannot enter the local picker`() {
         assertThrows(IllegalArgumentException::class.java) {
-            EpubPrototypeFonts.select(EpubPreferences(), FontFamily("Unknown family"))
+            EpubFonts.select(EpubPreferences(), FontFamily("Unknown family"))
         }
     }
 
     @Test
     fun `only exact bundled TTF paths are served`() {
-        val patterns = EpubPrototypeFonts.servedAssetPatterns
-        val paths = EpubPrototypeFonts.families.flatMap { listOf(it.uprightPath, it.italicPath) }
+        val patterns = EpubFonts.servedAssetPatterns
+        val paths = EpubFonts.families.flatMap { listOf(it.uprightPath, it.italicPath) }
         // Android's simple glob treats brackets/commas literally, unlike regex character classes.
         val expected = paths.map { it.removeSuffix(".ttf") + '\\' + ".ttf" }
         assertEquals(expected, patterns)
@@ -60,7 +61,7 @@ class EpubPrototypeFontsTest {
         val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
             .map { File(it, "app/src/debug/assets") }
             .first { File(it, "epub-fonts/manifest.json").isFile }
-        EpubPrototypeFonts.families.forEach { family ->
+        EpubFonts.families.forEach { family ->
             listOf(family.uprightPath, family.italicPath).forEach { path ->
                 val file = File(root, path)
                 assertTrue(file.isFile, path)

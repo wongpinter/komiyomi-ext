@@ -37,15 +37,15 @@ abstract class VerifyEpubPhotoView : DefaultTask() {
         }
         val bundled = ZipFile(navigatorAar.get().asFile).use { aar ->
             val jar = checkNotNull(aar.getEntry("libs/PhotoView-2.3.0.jar")) {
-                "Readium packaging changed; review the EPUB prototype PhotoView deduplication."
+                "Readium packaging changed; review the Ebook reader PhotoView deduplication."
             }
             classes(aar.getInputStream(jar).use { it.readBytes() })
         }
         check(original.isNotEmpty() && original.keys == bundled.keys) {
-            "EPUB prototype PhotoView classes differ from the manga reader dependency."
+            "Ebook reader PhotoView classes differ from the manga reader dependency."
         }
         check(original.all { (name, bytes) -> bytes.contentEquals(bundled.getValue(name)) }) {
-            "EPUB prototype must not replace manga PhotoView with different bytecode."
+            "Ebook reader must not replace manga PhotoView with different bytecode."
         }
         logger.lifecycle("Verified all ${original.size} bundled PhotoView classes are byte-identical.")
     }

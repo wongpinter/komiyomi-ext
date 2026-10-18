@@ -1,4 +1,5 @@
 // KMK -->
+// Reading font resources for the ebook reader.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -9,7 +10,7 @@ import org.readium.r2.navigator.epub.css.FontStyle
 import org.readium.r2.navigator.preferences.FontFamily
 
 /** Bundled offline EPUB fonts, never used as app-wide or manga typefaces. */
-internal object EpubPrototypeFonts {
+internal object EpubFonts {
     data class Family(
         val name: String,
         val directory: String,
@@ -46,6 +47,8 @@ internal object EpubPrototypeFonts {
         .map { it.replace(".", "\\.") }
 
     fun configuration() = EpubNavigatorFragment.Configuration {
+        // Scroll mode uses a vertical pull at the end of a section to advance.
+        disablePageTurnsWhileScrolling = true
         servedAssets += servedAssetPatterns
         families.forEach { family ->
             // No preloads: fonts are fetched by the WebView only when needed.

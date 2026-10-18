@@ -1,4 +1,5 @@
 // KMK -->
+// Reading layout preference coverage.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -11,25 +12,25 @@ import org.junit.jupiter.api.Test
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.TextAlign
 
-class EpubPrototypeLayoutTest {
+class EpubLayoutTest {
     @Test
     fun `layout starts with publisher defaults`() {
         val preferences = EpubPreferences(scroll = true)
-        EpubPrototypeLayout.Metric.entries.forEach { assertNull(EpubPrototypeLayout.value(preferences, it)) }
+        EpubLayout.Metric.entries.forEach { assertNull(EpubLayout.value(preferences, it)) }
         assertNull(preferences.textAlign)
         assertNull(preferences.publisherStyles)
     }
 
     @Test
     fun `every metric supports both boundaries and rejects invalid numbers`() {
-        EpubPrototypeLayout.Metric.entries.forEach { metric ->
+        EpubLayout.Metric.entries.forEach { metric ->
             listOf(metric.minimum, metric.maximum).forEach { value ->
-                val result = EpubPrototypeLayout.set(EpubPreferences(), metric, value)
-                assertEquals(value, EpubPrototypeLayout.value(result, metric))
+                val result = EpubLayout.set(EpubPreferences(), metric, value)
+                assertEquals(value, EpubLayout.value(result, metric))
             }
             listOf(metric.minimum - 0.1, metric.maximum + 0.1, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY).forEach { value ->
                 assertThrows(IllegalArgumentException::class.java) {
-                    EpubPrototypeLayout.set(EpubPreferences(), metric, value)
+                    EpubLayout.set(EpubPreferences(), metric, value)
                 }
             }
         }
@@ -37,21 +38,21 @@ class EpubPrototypeLayoutTest {
 
     @Test
     fun `horizontal margins do not disable publisher styles`() {
-        assertNull(EpubPrototypeLayout.set(EpubPreferences(), EpubPrototypeLayout.Metric.MARGINS, 1.5).publisherStyles)
-        assertEquals(true, EpubPrototypeLayout.set(EpubPreferences(publisherStyles = true), EpubPrototypeLayout.Metric.MARGINS, 0.0).publisherStyles)
+        assertNull(EpubLayout.set(EpubPreferences(), EpubLayout.Metric.MARGINS, 1.5).publisherStyles)
+        assertEquals(true, EpubLayout.set(EpubPreferences(publisherStyles = true), EpubLayout.Metric.MARGINS, 0.0).publisherStyles)
     }
 
     @Test
     fun `advanced overrides enable custom layout and preserve unrelated preferences`() {
         val original = EpubPreferences(
-            fontFamily = EpubPrototypeFonts.families.first().fontFamily,
+            fontFamily = EpubFonts.families.first().fontFamily,
             fontSize = 1.7,
             scroll = true,
             pageMargins = 1.3,
             paragraphIndent = 0.4,
             publisherStyles = true,
         )
-        val changed = EpubPrototypeLayout.set(original, EpubPrototypeLayout.Metric.LINE_HEIGHT, 1.6)
+        val changed = EpubLayout.set(original, EpubLayout.Metric.LINE_HEIGHT, 1.6)
         assertEquals(original.copy(lineHeight = 1.6, publisherStyles = false), changed)
         assertFalse(requireNotNull(changed.publisherStyles))
     }
@@ -59,28 +60,28 @@ class EpubPrototypeLayoutTest {
     @Test
     fun `clearing one metric retains other overrides and custom mode`() {
         val original = EpubPreferences(lineHeight = 1.8, paragraphSpacing = 0.6, publisherStyles = false)
-        val cleared = EpubPrototypeLayout.set(original, EpubPrototypeLayout.Metric.LINE_HEIGHT, null)
+        val cleared = EpubLayout.set(original, EpubLayout.Metric.LINE_HEIGHT, null)
         assertEquals(original.copy(lineHeight = null), cleared)
     }
 
     @Test
     fun `alignment supports only actually mapped renderer values`() {
         val original = EpubPreferences(scroll = true, fontSize = 1.8)
-        assertEquals(listOf(TextAlign.START, TextAlign.LEFT, TextAlign.RIGHT, TextAlign.JUSTIFY), EpubPrototypeLayout.alignments)
-        EpubPrototypeLayout.alignments.forEach { value ->
-            assertEquals(original.copy(textAlign = value, publisherStyles = false), EpubPrototypeLayout.align(original, value))
+        assertEquals(listOf(TextAlign.START, TextAlign.LEFT, TextAlign.RIGHT, TextAlign.JUSTIFY), EpubLayout.alignments)
+        EpubLayout.alignments.forEach { value ->
+            assertEquals(original.copy(textAlign = value, publisherStyles = false), EpubLayout.align(original, value))
         }
         listOf(TextAlign.CENTER, TextAlign.END).forEach { value ->
-            assertThrows(IllegalArgumentException::class.java) { EpubPrototypeLayout.align(original, value) }
+            assertThrows(IllegalArgumentException::class.java) { EpubLayout.align(original, value) }
         }
-        val selected = EpubPrototypeLayout.align(original, TextAlign.JUSTIFY)
-        assertEquals(selected.copy(textAlign = null), EpubPrototypeLayout.align(selected, null))
+        val selected = EpubLayout.align(original, TextAlign.JUSTIFY)
+        assertEquals(selected.copy(textAlign = null), EpubLayout.align(selected, null))
     }
 
     @Test
     fun `restore publisher layout clears only layout panel values`() {
         val original = EpubPreferences(
-            fontFamily = EpubPrototypeFonts.families[2].fontFamily,
+            fontFamily = EpubFonts.families[2].fontFamily,
             fontSize = 1.6,
             scroll = true,
             letterSpacing = 0.2,
@@ -93,8 +94,8 @@ class EpubPrototypeLayoutTest {
             textAlign = TextAlign.RIGHT,
             publisherStyles = false,
         )
-        assertEquals(original, EpubPrototypeLayout.reset(changed))
-        assertEquals(original, EpubPrototypeLayout.reset(original))
+        assertEquals(original, EpubLayout.reset(changed))
+        assertEquals(original, EpubLayout.reset(original))
     }
 }
 // KMK <--

@@ -1,11 +1,14 @@
 // KMK -->
+// Ebook library and reader activity.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -40,29 +43,39 @@ import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import exh.log.xLogE
 import exh.log.xLogI
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.ReadingProgression
+import org.readium.r2.shared.publication.Layout
 import org.readium.r2.shared.util.AbsoluteUrl
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
-/** Debug-only EPUB library and reader interface, isolated from the manga reader. */
-class EpubPrototypeActivity : BaseActivity() {
-    private lateinit var model: EpubPrototypeViewModel
+/** Full-screen EPUB library and reader interface, isolated from the manga reader. */
+class EbookActivity : BaseActivity() {
+    private lateinit var model: EpubViewModel
     private lateinit var container: FragmentContainerView
     private lateinit var libraryHost: ComposeView
     private lateinit var readerTopHost: ComposeView
     private lateinit var readerBottomHost: ComposeView
+    private lateinit var readerLoadingHost: FrameLayout
     private var navigator: EpubNavigatorFragment? = null
-    private var ready: EpubPrototypeViewModel.State.Ready? = null
+    private var ready: EpubViewModel.State.Ready? = null
     private var locationJob: Job? = null
+    private var readerPreparationJob: Job? = null
+    private var readerPageReady by mutableStateOf(false)
+    private var readerTocReady by mutableStateOf(false)
+    private val readerReadyForInteraction: Boolean
+        get() = readerPageReady && readerTocReady
     private var contentsSheet: androidx.appcompat.app.AppCompatDialog? = null
     private var controlsVisible by mutableStateOf(true)
     private var bookmarked by mutableStateOf(false)
@@ -73,9 +86,25 @@ class EpubPrototypeActivity : BaseActivity() {
     private var bookDetailsLoadJob: Job? = null
     private var bookDetailsUi by mutableStateOf<BookDetailsUi?>(null)
     private var pickingBook = false
+    private var chapterPull: ChapterPull? = null
+    private var chapterTurnFromHref: String? = null
+
+    private data class ChapterPull(
+        val reader: EpubNavigatorFragment,
+        val href: String,
+        val x: Float,
+        val y: Float,
+        val startedAtEnd: Deferred<Boolean>,
+    )
+
+    private companion object {
+        const val AT_CHAPTER_END =
+            "(function(){const e=document.scrollingElement||document.documentElement;" +
+                "return e.scrollHeight>0&&e.scrollHeight-e.clientHeight-e.scrollTop<=4})()"
+    }
 
     private data class BookDetailsUi(
-        val book: EpubPrototypeStore.ImportedEpub,
+        val book: EpubStore.ImportedEpub,
         val metadataJson: String?,
         val loading: Boolean,
         val error: Boolean,
@@ -89,6 +118,17 @@ class EpubPrototypeActivity : BaseActivity() {
         if (uri != null) model.import(uri)
     }
 
+    private val selectFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            model.addFolderSource(uri)
+        } catch (error: SecurityException) {
+            xLogE("Unable to retain selected EPUB folder access", error)
+            Toast.makeText(this, stringResource(KMR.strings.epub_library_folder_permission_failed), Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         pickingBook = savedInstanceState?.getBoolean("epub-picking-book") ?: false
         registerSecureActivity(this)
@@ -99,7 +139,7 @@ class EpubPrototypeActivity : BaseActivity() {
         supportFragmentManager.fragments.filterIsInstance<EpubNavigatorFragment>().forEach {
             supportFragmentManager.beginTransaction().remove(it).commitNow()
         }
-        model = ViewModelProvider(this)[EpubPrototypeViewModel::class.java]
+        model = ViewModelProvider(this)[EpubViewModel::class.java]
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val root = FrameLayout(this)
         container = FragmentContainerView(this).apply {
@@ -113,6 +153,7 @@ class EpubPrototypeActivity : BaseActivity() {
             setEpubContent {
                 val state by model.state.collectAsState()
                 val books by model.books.collectAsState()
+                val folderSources by model.folderSources.collectAsState()
                 val loading by model.libraryLoading.collectAsState()
                 val libraryError by model.libraryError.collectAsState()
                 EpubLibraryScreen(
@@ -120,9 +161,13 @@ class EpubPrototypeActivity : BaseActivity() {
                     books = books,
                     libraryLoading = loading,
                     libraryError = libraryError,
+                    folderSources = folderSources,
                     shelfSettings = model.shelfSettings(),
                     onShelfSettingsChange = model::saveShelfSettings,
                     onImport = ::launchBookPicker,
+                    onAddFolder = ::launchFolderPicker,
+                    onScanFolders = model::scanFolderSources,
+                    onRemoveFolder = model::removeFolderSource,
                     onOpen = model::openBook,
                     onRemove = ::confirmRemoveBook,
                     onRemoveAll = ::confirmRemoveAll,
@@ -143,7 +188,7 @@ class EpubPrototypeActivity : BaseActivity() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setEpubContent {
                 val state by model.state.collectAsState()
-                val book = state as? EpubPrototypeViewModel.State.Ready
+                val book = state as? EpubViewModel.State.Ready
                 if (book != null) {
                     EpubReaderTopBar(
                         title = book.session.publication.metadata.title ?: book.file.nameWithoutExtension,
@@ -164,7 +209,7 @@ class EpubPrototypeActivity : BaseActivity() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setEpubContent {
                 val state by model.state.collectAsState()
-                if (state is EpubPrototypeViewModel.State.Ready) {
+                if (state is EpubViewModel.State.Ready) {
                     EpubReaderBottomBar(
                         controlsVisible = controlsVisible,
                         progress = currentProgress,
@@ -177,6 +222,33 @@ class EpubPrototypeActivity : BaseActivity() {
             }
         }
         root.addView(readerBottomHost, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+
+        readerLoadingHost = FrameLayout(this).apply {
+            isClickable = true
+            isFocusable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            visibility = View.GONE
+            addView(
+                ComposeView(this@EbookActivity).apply {
+                    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                    setEpubContent {
+                        val state by model.state.collectAsState()
+                        val book = state as? EpubViewModel.State.Ready
+                        if (book != null) {
+                            EpubReaderLoadingScreen(
+                                title = book.session.publication.metadata.title ?: book.file.nameWithoutExtension,
+                                firstPageReady = readerPageReady,
+                                tocReady = readerTocReady,
+                                readerTheme = readerTheme,
+                                onBack = ::returnToLibrary,
+                            )
+                        }
+                    }
+                },
+                FrameLayout.LayoutParams(-1, -1),
+            )
+        }
+        root.addView(readerLoadingHost, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
 
         onBackPressedDispatcher.addCallback(
@@ -203,7 +275,7 @@ class EpubPrototypeActivity : BaseActivity() {
                 SideEffect {
                     if (appColorScheme != colorScheme) {
                         appColorScheme = colorScheme
-                        updateSystemBars(showSystemBars = ready == null || controlsVisible)
+                        updateSystemBars(showSystemBars = ready == null || controlsVisible || !readerReadyForInteraction)
                     }
                 }
                 content()
@@ -214,6 +286,10 @@ class EpubPrototypeActivity : BaseActivity() {
     private fun launchBookPicker() {
         pickingBook = true
         selectBook.launch(arrayOf("application/epub+zip", "application/octet-stream", "application/zip"))
+    }
+
+    private fun launchFolderPicker() {
+        selectFolder.launch(null)
     }
 
     private fun showContents() {
@@ -265,7 +341,7 @@ class EpubPrototypeActivity : BaseActivity() {
         )
     }
 
-    private fun showShelfBookDetails(book: EpubPrototypeStore.ImportedEpub) {
+    private fun showShelfBookDetails(book: EpubStore.ImportedEpub) {
         showBookDetails(book)
     }
 
@@ -276,7 +352,7 @@ class EpubPrototypeActivity : BaseActivity() {
             title = metadata.title ?: state.file.nameWithoutExtension,
             authors = metadata.authors.joinToString(", ") { it.name },
             chapterCount = state.session.publication.readingOrder.size,
-        ) ?: EpubPrototypeStore.ImportedEpub(
+        ) ?: EpubStore.ImportedEpub(
             file = state.file,
             title = metadata.title ?: state.file.nameWithoutExtension,
             authors = metadata.authors.joinToString(", ") { it.name },
@@ -288,7 +364,7 @@ class EpubPrototypeActivity : BaseActivity() {
     }
 
     private fun showBookDetails(
-        book: EpubPrototypeStore.ImportedEpub,
+        book: EpubStore.ImportedEpub,
         initialMetadataJson: String? = null,
     ) {
         bookDetailsLoadJob?.cancel()
@@ -349,7 +425,7 @@ class EpubPrototypeActivity : BaseActivity() {
         val book = model.books.value.firstOrNull { it.file == file } ?: return
         AlertDialog.Builder(this)
             .setTitle(book.title)
-            .setMessage(stringResource(KMR.strings.epub_prototype_remove_book_confirm))
+            .setMessage(stringResource(KMR.strings.ebook_remove_book_confirm))
             .setPositiveButton(stringResource(KMR.strings.epub_library_remove)) { _, _ -> model.removeBook(file) }
             .setNegativeButton(stringResource(MR.strings.action_cancel), null)
             .show()
@@ -358,13 +434,16 @@ class EpubPrototypeActivity : BaseActivity() {
     private fun confirmRemoveAll() {
         AlertDialog.Builder(this)
             .setTitle(stringResource(KMR.strings.epub_library_remove_all))
-            .setMessage(stringResource(KMR.strings.epub_prototype_remove_confirm))
+            .setMessage(stringResource(KMR.strings.ebook_remove_confirm))
             .setPositiveButton(stringResource(KMR.strings.epub_library_remove_all)) { _, _ -> model.removeImportedCopies() }
             .setNegativeButton(stringResource(MR.strings.action_cancel), null)
             .show()
     }
 
     private fun returnToLibrary() {
+        chapterPull?.startedAtEnd?.cancel()
+        chapterPull = null
+        chapterTurnFromHref = null
         val state = ready
         val reader = navigator
         if (state != null && reader != null) model.saveLocation(state.file, reader.currentLocator.value)
@@ -372,9 +451,14 @@ class EpubPrototypeActivity : BaseActivity() {
         contentsSheet = null
         locationJob?.cancel()
         locationJob = null
+        readerPreparationJob?.cancel()
+        readerPreparationJob = null
+        readerPageReady = false
+        readerTocReady = false
         navigator?.let { supportFragmentManager.beginTransaction().remove(it).commitNow() }
         navigator = null
         ready = null
+        updateReaderLoadingOverlay()
         model.closeBook()
         model.refreshLibrary()
         updateReaderControls(true)
@@ -431,8 +515,8 @@ class EpubPrototypeActivity : BaseActivity() {
         val state = ready ?: return
         val preferences = model.preferences(state.file)
         val selectedTheme = EpubReaderTheme.fromStoredName(model.readerThemeName(state.file))
-        val selectedFont = EpubPrototypeFonts.families.firstOrNull { it.fontFamily == preferences.fontFamily }?.name
-            ?: stringResource(KMR.strings.epub_prototype_publisher_font)
+        val selectedFont = EpubFonts.families.firstOrNull { it.fontFamily == preferences.fontFamily }?.name
+            ?: stringResource(KMR.strings.ebook_publisher_font)
         val dialog = BottomSheetDialog(this)
         val sheet = ComposeView(this).apply {
             setEpubContent {
@@ -477,7 +561,7 @@ class EpubPrototypeActivity : BaseActivity() {
     }
 
     private fun applyPreferences(
-        state: EpubPrototypeViewModel.State.Ready,
+        state: EpubViewModel.State.Ready,
         change: (org.readium.r2.navigator.epub.EpubPreferences) -> org.readium.r2.navigator.epub.EpubPreferences,
     ) {
         val reader = navigator ?: return
@@ -491,18 +575,35 @@ class EpubPrototypeActivity : BaseActivity() {
         }
     }
 
-    private fun render(state: EpubPrototypeViewModel.State) {
-        val inReader = state is EpubPrototypeViewModel.State.Ready
+    private fun render(state: EpubViewModel.State) {
+        val inReader = state is EpubViewModel.State.Ready
         container.visibility = if (inReader) View.VISIBLE else View.GONE
         libraryHost.visibility = if (inReader) View.GONE else View.VISIBLE
         readerTopHost.visibility = if (inReader && controlsVisible) View.VISIBLE else View.GONE
         readerBottomHost.visibility = if (inReader && controlsVisible) View.VISIBLE else View.GONE
-        updateSystemBars(showSystemBars = !inReader || controlsVisible)
-        if (state is EpubPrototypeViewModel.State.Ready && navigator == null) attachReader(state)
+        if (state is EpubViewModel.State.Ready && navigator == null) attachReader(state)
+        updateReaderLoadingOverlay()
     }
 
-    private fun attachReader(state: EpubPrototypeViewModel.State.Ready) {
+    private fun attachReader(state: EpubViewModel.State.Ready) {
         ready = state
+        readerPreparationJob?.cancel()
+        readerPageReady = false
+        readerTocReady = false
+        updateReaderLoadingOverlay()
+        readerPreparationJob = lifecycleScope.launch {
+            try {
+                model.tocIndex(state)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                xLogE("Unable to pre-index EPUB table of contents", error)
+            }
+            if (ready === state) {
+                readerTocReady = true
+                updateReaderLoadingOverlay()
+            }
+        }
         bookmarked = model.hasBookmark(state.file)
         readerTheme = EpubReaderTheme.fromStoredName(model.readerThemeName(state.file))
         currentProgress = model.location(state.file)?.locations?.totalProgression?.toFloat()?.coerceIn(0f, 1f) ?: 0f
@@ -511,20 +612,25 @@ class EpubPrototypeActivity : BaseActivity() {
         val factory = state.session.navigatorFactory.createFragmentFactory(
             initialLocator = model.location(state.file),
             initialPreferences = model.preferences(state.file).copy(theme = readerTheme.readiumTheme),
-            configuration = EpubPrototypeFonts.configuration(),
+            configuration = EpubFonts.configuration(),
             paginationListener = object : EpubNavigatorFragment.PaginationListener {
                 override fun onPageLoaded() {
                     if (firstPageReported) return
                     firstPageReported = true
                     xLogI("EPUB performance: first page-loaded callback after attachMs=${(System.nanoTime() - attachStarted) / 1_000_000}")
-                    model.prewarmTocIndex(state)
+                    runOnUiThread {
+                        if (ready === state) {
+                            readerPageReady = true
+                            updateReaderLoadingOverlay()
+                        }
+                    }
                 }
             },
             listener = object : EpubNavigatorFragment.Listener {
                 override fun onExternalLinkActivated(url: AbsoluteUrl) {
                     Toast.makeText(
-                        this@EpubPrototypeActivity,
-                        stringResource(KMR.strings.epub_prototype_external_link),
+                        this@EbookActivity,
+                        stringResource(KMR.strings.ebook_external_link),
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
@@ -544,6 +650,9 @@ class EpubPrototypeActivity : BaseActivity() {
         locationJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 reader.currentLocator.collect { locator ->
+                    if (chapterTurnFromHref != null && locator.href.toString().substringBefore('#') != chapterTurnFromHref) {
+                        chapterTurnFromHref = null
+                    }
                     model.saveLocation(state.file, locator)
                     val pendingJump = pendingTocJump
                     if (pendingJump != null && locator.href.toString().substringBefore('#') == pendingJump.targetHref) {
@@ -561,15 +670,78 @@ class EpubPrototypeActivity : BaseActivity() {
         updateReaderControls(false)
     }
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val handled = super.dispatchTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                chapterPull?.startedAtEnd?.cancel()
+                chapterPull = null
+                val state = ready
+                val reader = navigator
+                if (
+                    state != null && reader != null &&
+                    model.preferences(state.file).scroll == true &&
+                    state.session.publication.metadata.layout != Layout.FIXED &&
+                    chapterTurnFromHref == null &&
+                    (!controlsVisible || event.y in readerTopHost.height.toFloat()..(container.height - readerBottomHost.height).toFloat())
+                ) {
+                    chapterPull = ChapterPull(
+                        reader = reader,
+                        href = reader.currentLocator.value.href.toString().substringBefore('#'),
+                        x = event.x,
+                        y = event.y,
+                        startedAtEnd = lifecycleScope.async { reader.evaluateJavascript(AT_CHAPTER_END) == "true" },
+                    )
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val pull = chapterPull
+                chapterPull = null
+                if (pull != null && pull.startedAtEnd.isCompleted && event.pointerCount == 1 &&
+                    pull.y - event.y >= 64.dp && abs(pull.x - event.x) < abs(pull.y - event.y) / 2
+                ) {
+                    lifecycleScope.launch {
+                        val state = ready ?: return@launch
+                        if (!pull.startedAtEnd.await() || navigator !== pull.reader ||
+                            model.preferences(state.file).scroll != true ||
+                            pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
+                            pull.reader.evaluateJavascript(AT_CHAPTER_END) != "true"
+                        ) {
+                            return@launch
+                        }
+                        val links = state.session.publication.readingOrder
+                        val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
+                        if (index < 0) return@launch
+                        val next = links.getOrNull(index + 1) ?: return@launch
+                        chapterTurnFromHref = pull.href
+                        if (!pull.reader.go(next)) {
+                            chapterTurnFromHref = null
+                        } else {
+                            delay(10_000)
+                            if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                        }
+                    }
+                } else {
+                    pull?.startedAtEnd?.cancel()
+                }
+            }
+            MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                chapterPull?.startedAtEnd?.cancel()
+                chapterPull = null
+            }
+        }
+        return handled
+    }
+
     private fun showFontPicker() {
         val state = ready ?: return
         val reader = navigator ?: return
-        val families = EpubPrototypeFonts.families
+        val families = EpubFonts.families
         val selected = model.preferences(state.file).fontFamily
-        val labels = listOf(stringResource(KMR.strings.epub_prototype_publisher_font)) + families.map { it.name }
+        val labels = listOf(stringResource(KMR.strings.ebook_publisher_font)) + families.map { it.name }
         val checked = families.indexOfFirst { it.fontFamily == selected } + 1
         AlertDialog.Builder(this)
-            .setTitle(stringResource(KMR.strings.epub_prototype_font))
+            .setTitle(stringResource(KMR.strings.ebook_font))
             .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, index ->
                 if (ready !== state || navigator !== reader) {
                     dialog.dismiss()
@@ -577,7 +749,7 @@ class EpubPrototypeActivity : BaseActivity() {
                 }
                 // Keep a pre-reflow checkpoint; Readium manages reflow in the existing navigator.
                 reader.currentLocator.value.let { model.saveLocation(state.file, it) }
-                val changed = EpubPrototypeFonts.select(
+                val changed = EpubFonts.select(
                     model.preferences(state.file),
                     families.getOrNull(index - 1)?.fontFamily,
                 )
@@ -590,12 +762,12 @@ class EpubPrototypeActivity : BaseActivity() {
             .show()
     }
 
-    private fun layoutLabel(metric: EpubPrototypeLayout.Metric): String = stringResource(
+    private fun layoutLabel(metric: EpubLayout.Metric): String = stringResource(
         when (metric) {
-            EpubPrototypeLayout.Metric.MARGINS -> KMR.strings.epub_layout_margins
-            EpubPrototypeLayout.Metric.LINE_HEIGHT -> KMR.strings.epub_layout_line_height
-            EpubPrototypeLayout.Metric.PARAGRAPH_SPACING -> KMR.strings.epub_layout_paragraph_spacing
-            EpubPrototypeLayout.Metric.PARAGRAPH_INDENT -> KMR.strings.epub_layout_paragraph_indent
+            EpubLayout.Metric.MARGINS -> KMR.strings.epub_layout_margins
+            EpubLayout.Metric.LINE_HEIGHT -> KMR.strings.epub_layout_line_height
+            EpubLayout.Metric.PARAGRAPH_SPACING -> KMR.strings.epub_layout_paragraph_spacing
+            EpubLayout.Metric.PARAGRAPH_INDENT -> KMR.strings.epub_layout_paragraph_indent
         },
     )
 
@@ -615,38 +787,38 @@ class EpubPrototypeActivity : BaseActivity() {
         val state = ready ?: return
         val reader = navigator ?: return
         val preferences = model.preferences(state.file)
-        val metrics = EpubPrototypeLayout.Metric.entries
+        val metrics = EpubLayout.Metric.entries
         val items = metrics.map { metric ->
-            stringResource(KMR.strings.epub_layout_setting_value, layoutLabel(metric), layoutValue(EpubPrototypeLayout.value(preferences, metric)))
+            stringResource(KMR.strings.epub_layout_setting_value, layoutLabel(metric), layoutValue(EpubLayout.value(preferences, metric)))
         } + stringResource(
             KMR.strings.epub_layout_setting_value,
             stringResource(KMR.strings.epub_layout_alignment),
-            alignmentLabels()[EpubPrototypeLayout.alignments.indexOf(preferences.textAlign) + 1],
+            alignmentLabels()[EpubLayout.alignments.indexOf(preferences.textAlign) + 1],
         )
         AlertDialog.Builder(this)
-            .setTitle(stringResource(KMR.strings.epub_prototype_layout))
+            .setTitle(stringResource(KMR.strings.ebook_layout))
             .setItems(items.toTypedArray()) { _, index ->
                 if (ready !== state || navigator !== reader) return@setItems
                 if (index < metrics.size) showLayoutMetric(metrics[index]) else showLayoutAlignment()
             }
             .setNeutralButton(stringResource(KMR.strings.epub_layout_reset)) { _, _ ->
-                updateLayout(state, reader, EpubPrototypeLayout::reset)
+                updateLayout(state, reader, EpubLayout::reset)
             }
             .setNegativeButton(stringResource(MR.strings.action_close), null)
             .show()
     }
 
-    private fun showLayoutMetric(metric: EpubPrototypeLayout.Metric) {
+    private fun showLayoutMetric(metric: EpubLayout.Metric) {
         val state = ready ?: return
         val reader = navigator ?: return
-        val original = EpubPrototypeLayout.value(model.preferences(state.file), metric)
+        val original = EpubLayout.value(model.preferences(state.file), metric)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24.dp, 8.dp, 24.dp, 8.dp)
         }
         val note = TextView(this).apply {
             text = stringResource(
-                if (metric == EpubPrototypeLayout.Metric.MARGINS) KMR.strings.epub_layout_margins_note else KMR.strings.epub_layout_custom_note,
+                if (metric == EpubLayout.Metric.MARGINS) KMR.strings.epub_layout_margins_note else KMR.strings.epub_layout_custom_note,
             )
         }
         content.addView(note)
@@ -678,10 +850,10 @@ class EpubPrototypeActivity : BaseActivity() {
             .setTitle(layoutLabel(metric))
             .setView(android.widget.ScrollView(this).apply { addView(content) })
             .setPositiveButton(stringResource(KMR.strings.epub_layout_apply)) { _, _ ->
-                updateLayout(state, reader) { EpubPrototypeLayout.set(it, metric, selected) }
+                updateLayout(state, reader) { EpubLayout.set(it, metric, selected) }
             }
             .setNeutralButton(stringResource(KMR.strings.epub_layout_default)) { _, _ ->
-                updateLayout(state, reader) { EpubPrototypeLayout.set(it, metric, null) }
+                updateLayout(state, reader) { EpubLayout.set(it, metric, null) }
             }
             .setNegativeButton(stringResource(MR.strings.action_cancel), null)
             .show()
@@ -694,18 +866,18 @@ class EpubPrototypeActivity : BaseActivity() {
         var selected = original
         AlertDialog.Builder(this)
             .setTitle(stringResource(KMR.strings.epub_layout_alignment))
-            .setSingleChoiceItems(alignmentLabels().toTypedArray(), EpubPrototypeLayout.alignments.indexOf(original) + 1) { _, index ->
-                selected = EpubPrototypeLayout.alignments.getOrNull(index - 1)
+            .setSingleChoiceItems(alignmentLabels().toTypedArray(), EpubLayout.alignments.indexOf(original) + 1) { _, index ->
+                selected = EpubLayout.alignments.getOrNull(index - 1)
             }
             .setPositiveButton(stringResource(KMR.strings.epub_layout_apply)) { _, _ ->
-                updateLayout(state, reader) { EpubPrototypeLayout.align(it, selected) }
+                updateLayout(state, reader) { EpubLayout.align(it, selected) }
             }
             .setNegativeButton(stringResource(MR.strings.action_cancel), null)
             .show()
     }
 
     private fun updateLayout(
-        state: EpubPrototypeViewModel.State.Ready,
+        state: EpubViewModel.State.Ready,
         reader: EpubNavigatorFragment,
         change: (org.readium.r2.navigator.epub.EpubPreferences) -> org.readium.r2.navigator.epub.EpubPreferences,
     ) {
@@ -720,7 +892,14 @@ class EpubPrototypeActivity : BaseActivity() {
         readerTopHost.visibility = if (showReaderControls) View.VISIBLE else View.GONE
         readerBottomHost.visibility = if (showReaderControls) View.VISIBLE else View.GONE
         if (ready == null) libraryHost.visibility = View.VISIBLE
-        updateSystemBars(showSystemBars = visible || ready == null)
+        updateReaderLoadingOverlay()
+    }
+
+    private fun updateReaderLoadingOverlay() {
+        if (!::readerLoadingHost.isInitialized) return
+        val loading = ready != null && !readerReadyForInteraction
+        readerLoadingHost.visibility = if (loading) View.VISIBLE else View.GONE
+        updateSystemBars(showSystemBars = ready == null || controlsVisible || loading)
     }
 
     private fun updateSystemBars(showSystemBars: Boolean) {
@@ -755,6 +934,7 @@ class EpubPrototypeActivity : BaseActivity() {
         bookDetailsDialog?.dismiss()
         bookDetailsLoadJob?.cancel()
         locationJob?.cancel()
+        readerPreparationJob?.cancel()
         super.onDestroy()
     }
 

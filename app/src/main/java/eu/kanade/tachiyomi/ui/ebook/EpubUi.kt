@@ -1,4 +1,5 @@
 // KMK -->
+// Ebook shelf and reader Compose UI.
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewCarousel
 import androidx.compose.material.icons.outlined.ViewList
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -74,6 +76,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -215,26 +218,95 @@ private enum class EpubLibraryLayout {
 
 private fun EpubLibrarySort.defaultDescending(): Boolean = this != EpubLibrarySort.AUTHOR && this != EpubLibrarySort.TITLE
 
-private fun EpubPrototypeStore.ImportedEpub.progress(): Float = progression?.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+private fun EpubStore.ImportedEpub.progress(): Float = progression?.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
 
 internal fun readerChromeColorScheme(appColorScheme: ColorScheme): ColorScheme = appColorScheme
 
 @Composable
+internal fun EpubReaderLoadingScreen(
+    title: String,
+    firstPageReady: Boolean,
+    tocReady: Boolean,
+    readerTheme: EpubReaderTheme,
+    onBack: () -> Unit,
+) {
+    MaterialTheme(colorScheme = readerTheme.colorScheme) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        stringResource(KMR.strings.epub_reader_preparing),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    EpubReaderPreparationStep(
+                        label = stringResource(KMR.strings.epub_reader_loading_page),
+                        ready = firstPageReady,
+                    )
+                    EpubReaderPreparationStep(
+                        label = stringResource(KMR.strings.epub_reader_loading_toc),
+                        ready = tocReady,
+                    )
+                }
+                TextButton(onClick = onBack) {
+                    Text(stringResource(KMR.strings.epub_library_back))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpubReaderPreparationStep(label: String, ready: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (ready) {
+            Icon(Icons.Outlined.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        } else {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        }
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
 internal fun EpubLibraryScreen(
-    state: EpubPrototypeViewModel.State,
-    books: List<EpubPrototypeStore.ImportedEpub>,
+    state: EpubViewModel.State,
+    books: List<EpubStore.ImportedEpub>,
     libraryLoading: Boolean,
     libraryError: Boolean,
-    shelfSettings: EpubPrototypeStore.ShelfSettings,
-    onShelfSettingsChange: (EpubPrototypeStore.ShelfSettings) -> Unit,
+    folderSources: List<EpubStore.FolderSource>,
+    shelfSettings: EpubStore.ShelfSettings,
+    onShelfSettingsChange: (EpubStore.ShelfSettings) -> Unit,
     onImport: () -> Unit,
+    onAddFolder: () -> Unit,
+    onScanFolders: () -> Unit,
+    onRemoveFolder: (String) -> Unit,
     onOpen: (File) -> Unit,
     onRemove: (File) -> Unit,
     onRemoveAll: () -> Unit,
     onExit: () -> Unit,
     onRetry: () -> Unit,
     onCancelImport: () -> Unit,
-    onDetails: (EpubPrototypeStore.ImportedEpub) -> Unit,
+    onDetails: (EpubStore.ImportedEpub) -> Unit,
     loadCover: suspend (File) -> File?,
 ) {
     var query by rememberSaveable { mutableStateOf(shelfSettings.query) }
@@ -250,6 +322,10 @@ internal fun EpubLibraryScreen(
     }
     var coverSize by rememberSaveable { mutableIntStateOf(shelfSettings.coverSize.coerceIn(96, 192)) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var importMenuExpanded by remember { mutableStateOf(false) }
+    var manageFoldersVisible by rememberSaveable { mutableStateOf(false) }
+    var pendingFolderRemovalUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedCategory by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun persistShelfSettings(
         queryValue: String = query,
@@ -260,7 +336,7 @@ internal fun EpubLibraryScreen(
         coverSizeValue: Int = coverSize,
     ) {
         onShelfSettingsChange(
-            EpubPrototypeStore.ShelfSettings(
+            EpubStore.ShelfSettings(
                 query = queryValue,
                 filter = filterValue.name,
                 sort = sortValue.name,
@@ -271,7 +347,16 @@ internal fun EpubLibraryScreen(
         )
     }
 
-    val filtered = remember(books, query, selectedFilter, selectedSort, sortDescending) {
+    val categories = remember(books) {
+        buildList {
+            addAll(books.mapNotNull { it.category?.takeIf(String::isNotBlank) }.distinct().sorted())
+            if (books.any { it.category.isNullOrBlank() }) add(UNCATEGORIZED_FILTER)
+        }
+    }
+    LaunchedEffect(categories, selectedCategory) {
+        if (selectedCategory != null && selectedCategory !in categories) selectedCategory = null
+    }
+    val filtered = remember(books, query, selectedFilter, selectedSort, sortDescending, selectedCategory) {
         val matchingBooks = books.filter { book ->
             val matchesQuery = query.isBlank() ||
                 book.title.contains(query, ignoreCase = true) ||
@@ -283,69 +368,89 @@ internal fun EpubLibraryScreen(
                 EpubLibraryFilter.UNREAD -> progress == 0f && book.lastOpened == 0L
                 EpubLibraryFilter.FINISHED -> progress >= 0.98f
             }
-            matchesQuery && matchesFilter
+            val matchesCategory = when (selectedCategory) {
+                null -> true
+                UNCATEGORIZED_FILTER -> book.category.isNullOrBlank()
+                else -> book.category == selectedCategory
+            }
+            matchesQuery && matchesFilter && matchesCategory
         }
         val comparator = when (selectedSort) {
             EpubLibrarySort.RECENT -> if (sortDescending) {
-                compareByDescending<EpubPrototypeStore.ImportedEpub> { it.lastOpened }
+                compareByDescending<EpubStore.ImportedEpub> { it.lastOpened }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.lastOpened }
+                compareBy<EpubStore.ImportedEpub> { it.lastOpened }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             }
             EpubLibrarySort.ADDED -> if (sortDescending) {
-                compareByDescending<EpubPrototypeStore.ImportedEpub> { it.addedAt }
+                compareByDescending<EpubStore.ImportedEpub> { it.addedAt }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.addedAt }
+                compareBy<EpubStore.ImportedEpub> { it.addedAt }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             }
             EpubLibrarySort.AUTHOR -> if (sortDescending) {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.authors.isBlank() }
+                compareBy<EpubStore.ImportedEpub> { it.authors.isBlank() }
                     .thenByDescending { it.authors.lowercase(Locale.ROOT) }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.authors.isBlank() }
+                compareBy<EpubStore.ImportedEpub> { it.authors.isBlank() }
                     .thenBy { it.authors.lowercase(Locale.ROOT) }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             }
             EpubLibrarySort.TITLE -> if (sortDescending) {
-                compareByDescending<EpubPrototypeStore.ImportedEpub> { it.title.lowercase(Locale.ROOT) }
+                compareByDescending<EpubStore.ImportedEpub> { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.title.lowercase(Locale.ROOT) }
+                compareBy<EpubStore.ImportedEpub> { it.title.lowercase(Locale.ROOT) }
             }
             EpubLibrarySort.FILE_SIZE -> if (sortDescending) {
-                compareByDescending<EpubPrototypeStore.ImportedEpub> { it.size }
+                compareByDescending<EpubStore.ImportedEpub> { it.size }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.size }
+                compareBy<EpubStore.ImportedEpub> { it.size }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             }
             EpubLibrarySort.CHAPTER_COUNT -> if (sortDescending) {
-                compareByDescending<EpubPrototypeStore.ImportedEpub> { it.chapterCount }
+                compareByDescending<EpubStore.ImportedEpub> { it.chapterCount }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.chapterCount }
+                compareBy<EpubStore.ImportedEpub> { it.chapterCount }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             }
             EpubLibrarySort.PROGRESS -> if (sortDescending) {
-                compareByDescending<EpubPrototypeStore.ImportedEpub> { it.progress() }
+                compareByDescending<EpubStore.ImportedEpub> { it.progress() }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             } else {
-                compareBy<EpubPrototypeStore.ImportedEpub> { it.progress() }
+                compareBy<EpubStore.ImportedEpub> { it.progress() }
                     .thenBy { it.title.lowercase(Locale.ROOT) }
             }
         }
         matchingBooks.sortedWith(comparator)
     }
-    val continueBook = remember(books) {
+    val shelfGroups = remember(filtered) {
+        filtered.groupBy { it.category?.takeIf(String::isNotBlank) }
+            .entries
+            .sortedBy { it.key?.lowercase(Locale.ROOT) ?: "\uFFFF" }
+    }
+    val continueBook = remember(books, selectedCategory) {
         books.asSequence()
-            .filter { it.lastOpened > 0L && it.progress() < 0.98f }
+            .filter { book ->
+                book.lastOpened > 0L &&
+                    book.progress() < 0.98f &&
+                    when (selectedCategory) {
+                        null -> true
+                        UNCATEGORIZED_FILTER -> book.category.isNullOrBlank()
+                        else -> book.category == selectedCategory
+                    }
+            }
             .maxByOrNull { it.lastOpened }
     }
-    val operationInProgress = state is EpubPrototypeViewModel.State.Opening ||
-        state is EpubPrototypeViewModel.State.Importing ||
-        state is EpubPrototypeViewModel.State.Removing
+    val operationInProgress = state is EpubViewModel.State.Opening ||
+        state is EpubViewModel.State.Importing ||
+        state is EpubViewModel.State.Removing ||
+        state is EpubViewModel.State.Scanning ||
+        state is EpubViewModel.State.UpdatingFolders
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -367,17 +472,54 @@ internal fun EpubLibraryScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onImport, enabled = !operationInProgress) {
-                        Icon(Icons.Outlined.Add, contentDescription = stringResource(KMR.strings.epub_library_import))
+                    Box {
+                        IconButton(onClick = { importMenuExpanded = true }, enabled = !operationInProgress) {
+                            Icon(Icons.Outlined.Add, contentDescription = stringResource(KMR.strings.epub_library_import))
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = importMenuExpanded,
+                            onDismissRequest = { importMenuExpanded = false },
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(stringResource(KMR.strings.epub_library_import)) },
+                                onClick = {
+                                    importMenuExpanded = false
+                                    onImport()
+                                },
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(stringResource(KMR.strings.epub_library_add_folder)) },
+                                onClick = {
+                                    importMenuExpanded = false
+                                    onAddFolder()
+                                },
+                            )
+                        }
                     }
                     Box {
-                        IconButton(onClick = { menuExpanded = true }) {
+                        IconButton(onClick = { menuExpanded = true }, enabled = !operationInProgress) {
                             Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(KMR.strings.epub_library_more))
                         }
                         androidx.compose.material3.DropdownMenu(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false },
                         ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(stringResource(KMR.strings.epub_library_scan_folders)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onScanFolders()
+                                },
+                                enabled = !operationInProgress && folderSources.isNotEmpty(),
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(stringResource(KMR.strings.epub_library_manage_folders)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    manageFoldersVisible = true
+                                },
+                                enabled = !operationInProgress,
+                            )
                             androidx.compose.material3.DropdownMenuItem(
                                 text = { Text(stringResource(KMR.strings.epub_library_remove_all)) },
                                 onClick = {
@@ -433,23 +575,37 @@ internal fun EpubLibraryScreen(
                 }
             }
 
+            if (categories.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    EpubLibraryCategoryRow(categories, selectedCategory) { selectedCategory = it }
+                }
+            }
+
             if (libraryLoading || operationInProgress) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         val label = when (state) {
-                            is EpubPrototypeViewModel.State.Importing -> {
+                            is EpubViewModel.State.Importing -> {
                                 val copied = android.text.format.Formatter.formatFileSize(LocalContext.current, state.bytes)
                                 val amount = state.total?.let { "$copied / ${android.text.format.Formatter.formatFileSize(LocalContext.current, it)}" } ?: copied
-                                stringResource(KMR.strings.epub_prototype_copying, amount)
+                                stringResource(KMR.strings.ebook_copying, amount)
                             }
-                            EpubPrototypeViewModel.State.Opening -> stringResource(KMR.strings.epub_prototype_opening)
-                            EpubPrototypeViewModel.State.Removing -> stringResource(KMR.strings.epub_library_removing)
+                            is EpubViewModel.State.Scanning -> state.currentName?.let { name ->
+                                val copied = android.text.format.Formatter.formatFileSize(LocalContext.current, state.bytes)
+                                val amount = state.totalBytes?.let {
+                                    "$copied / ${android.text.format.Formatter.formatFileSize(LocalContext.current, it)}"
+                                } ?: copied
+                                stringResource(KMR.strings.epub_library_scanning_file, name, amount)
+                            } ?: stringResource(KMR.strings.epub_library_scanning, state.found)
+                            EpubViewModel.State.Opening -> stringResource(KMR.strings.ebook_opening)
+                            EpubViewModel.State.Removing -> stringResource(KMR.strings.epub_library_removing)
+                            EpubViewModel.State.UpdatingFolders -> stringResource(KMR.strings.epub_library_updating_folders)
                             else -> stringResource(KMR.strings.epub_library_loading)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (state is EpubPrototypeViewModel.State.Importing) {
+                            if (state is EpubViewModel.State.Importing || state is EpubViewModel.State.Scanning) {
                                 TextButton(onClick = onCancelImport) { Text(stringResource(KMR.strings.epub_library_cancel_import)) }
                             }
                         }
@@ -457,7 +613,27 @@ internal fun EpubLibraryScreen(
                 }
             }
 
-            if (libraryError || state is EpubPrototypeViewModel.State.Failed) {
+            if (state is EpubViewModel.State.ScanComplete) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        stringResource(
+                            if (state.insufficientSpace) {
+                                KMR.strings.epub_library_scan_space_summary
+                            } else {
+                                KMR.strings.epub_library_scan_summary
+                            },
+                            state.added,
+                            state.skipped,
+                            state.failed,
+                        ),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            if (libraryError || state is EpubViewModel.State.Failed) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                         Row(
@@ -469,9 +645,9 @@ internal fun EpubLibraryScreen(
                                 stringResource(
                                     when {
                                         libraryError -> KMR.strings.epub_library_error
-                                        (state as? EpubPrototypeViewModel.State.Failed)?.insufficientSpace == true -> KMR.strings.epub_prototype_space
-                                        (state as? EpubPrototypeViewModel.State.Failed)?.removalFailed == true -> KMR.strings.epub_prototype_remove_failed
-                                        else -> KMR.strings.epub_prototype_failed
+                                        (state as? EpubViewModel.State.Failed)?.insufficientSpace == true -> KMR.strings.ebook_space
+                                        (state as? EpubViewModel.State.Failed)?.removalFailed == true -> KMR.strings.ebook_remove_failed
+                                        else -> KMR.strings.ebook_failed
                                     },
                                 ),
                                 modifier = Modifier.weight(1f),
@@ -487,6 +663,7 @@ internal fun EpubLibraryScreen(
                 layout != EpubLibraryLayout.COVERS &&
                 continueBook != null &&
                 query.isBlank() &&
+                selectedCategory == null &&
                 selectedFilter in setOf(EpubLibraryFilter.ALL, EpubLibraryFilter.READING)
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -563,15 +740,140 @@ internal fun EpubLibraryScreen(
                     )
                 }
             } else {
-                items(filtered, key = { it.file.name }) { book ->
-                    when (layout) {
-                        EpubLibraryLayout.GRID -> EpubBookCard(book, onOpen, onDetails, onRemove, loadCover, enabled = !operationInProgress)
-                        EpubLibraryLayout.LIST -> EpubBookListItem(book, onOpen, onDetails, onRemove, loadCover, enabled = !operationInProgress)
-                        EpubLibraryLayout.COVERS -> EpubCoverOnlyCard(book, onOpen, onDetails, onRemove, loadCover, enabled = !operationInProgress)
+                shelfGroups.forEach { shelf ->
+                    item(
+                        key = shelf.key?.let { "shelf-header-category-$it" } ?: "shelf-header-uncategorized",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) {
+                        val shelfLabel = shelf.key ?: stringResource(KMR.strings.epub_library_uncategorized)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    shelfLabel,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    stringResource(KMR.strings.epub_library_count, shelf.value.size),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    items(shelf.value, key = { it.file.name }) { book ->
+                        when (layout) {
+                            EpubLibraryLayout.GRID -> EpubBookCard(book, onOpen, onDetails, onRemove, loadCover, enabled = !operationInProgress)
+                            EpubLibraryLayout.LIST -> EpubBookListItem(book, onOpen, onDetails, onRemove, loadCover, enabled = !operationInProgress)
+                            EpubLibraryLayout.COVERS -> EpubCoverOnlyCard(book, onOpen, onDetails, onRemove, loadCover, enabled = !operationInProgress)
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (manageFoldersVisible) {
+        val pendingFolder = folderSources.firstOrNull { it.uri == pendingFolderRemovalUri }
+        AlertDialog(
+            onDismissRequest = {
+                if (pendingFolderRemovalUri != null) {
+                    pendingFolderRemovalUri = null
+                } else {
+                    manageFoldersVisible = false
+                }
+            },
+            title = {
+                Text(
+                    stringResource(
+                        if (pendingFolder == null) {
+                            KMR.strings.epub_library_manage_folders
+                        } else {
+                            KMR.strings.epub_library_remove_folder_confirm_title
+                        },
+                    ),
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (pendingFolder != null) {
+                        Text(
+                            stringResource(KMR.strings.epub_library_remove_folder_confirm, pendingFolder.name),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        Text(
+                            stringResource(KMR.strings.epub_library_folder_sources_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        if (folderSources.isEmpty()) {
+                            Text(stringResource(KMR.strings.epub_library_no_folder_sources), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            folderSources.forEach { source ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(source.name, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    TextButton(onClick = { pendingFolderRemovalUri = source.uri }) {
+                                        Text(stringResource(KMR.strings.epub_library_remove_folder))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (pendingFolder != null) {
+                    TextButton(
+                        onClick = {
+                            val uri = pendingFolder.uri
+                            pendingFolderRemovalUri = null
+                            manageFoldersVisible = false
+                            onRemoveFolder(uri)
+                        },
+                    ) {
+                        Text(stringResource(KMR.strings.epub_library_remove_folder_confirm_action), color = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    TextButton(onClick = { manageFoldersVisible = false }) {
+                        Text(stringResource(KMR.strings.epub_library_done))
+                    }
+                }
+            },
+            dismissButton = {
+                if (pendingFolder != null) {
+                    TextButton(onClick = { pendingFolderRemovalUri = null }) {
+                        Text(stringResource(KMR.strings.epub_library_cancel_import))
+                    }
+                } else {
+                    TextButton(
+                        onClick = {
+                            manageFoldersVisible = false
+                            onAddFolder()
+                        },
+                    ) {
+                        Text(stringResource(KMR.strings.epub_library_add_folder))
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -599,6 +901,38 @@ private fun EpubLibraryFilterRow(
         }
     }
 }
+
+@Composable
+private fun EpubLibraryCategoryRow(
+    categories: List<String>,
+    selectedCategory: String?,
+    onCategory: (String?) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = selectedCategory == null,
+            onClick = { onCategory(null) },
+            label = { Text(stringResource(KMR.strings.epub_library_categories_all)) },
+        )
+        categories.forEach { category ->
+            val label = if (category == UNCATEGORIZED_FILTER) {
+                stringResource(KMR.strings.epub_library_uncategorized)
+            } else {
+                category
+            }
+            FilterChip(
+                selected = selectedCategory == category,
+                onClick = { onCategory(category) },
+                label = { Text(label, maxLines = 1) },
+            )
+        }
+    }
+}
+
+private const val UNCATEGORIZED_FILTER = "\u0000uncategorized"
 
 private fun EpubLibrarySort.label() = when (this) {
     EpubLibrarySort.RECENT -> KMR.strings.epub_library_sort_recent
@@ -740,7 +1074,7 @@ private fun EpubLibraryGridSizeControl(
 
 @Composable
 private fun ContinueReadingCard(
-    book: EpubPrototypeStore.ImportedEpub,
+    book: EpubStore.ImportedEpub,
     onOpen: (File) -> Unit,
     loadCover: suspend (File) -> File?,
 ) {
@@ -772,9 +1106,9 @@ private fun ContinueReadingCard(
 
 @Composable
 private fun EpubCoverOnlyCard(
-    book: EpubPrototypeStore.ImportedEpub,
+    book: EpubStore.ImportedEpub,
     onOpen: (File) -> Unit,
-    onDetails: (EpubPrototypeStore.ImportedEpub) -> Unit,
+    onDetails: (EpubStore.ImportedEpub) -> Unit,
     onRemove: (File) -> Unit,
     loadCover: suspend (File) -> File?,
     enabled: Boolean,
@@ -808,9 +1142,9 @@ private fun EpubCoverOnlyCard(
 
 @Composable
 private fun EpubBookCard(
-    book: EpubPrototypeStore.ImportedEpub,
+    book: EpubStore.ImportedEpub,
     onOpen: (File) -> Unit,
-    onDetails: (EpubPrototypeStore.ImportedEpub) -> Unit,
+    onDetails: (EpubStore.ImportedEpub) -> Unit,
     onRemove: (File) -> Unit,
     loadCover: suspend (File) -> File?,
     enabled: Boolean,
@@ -833,6 +1167,15 @@ private fun EpubBookCard(
             }
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(book.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, minLines = 2)
+                book.category?.takeIf(String::isNotBlank)?.let { category ->
+                    Text(
+                        category,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     book.authors.ifBlank { stringResource(KMR.strings.epub_library_author_unknown) },
                     style = MaterialTheme.typography.bodySmall,
@@ -856,9 +1199,9 @@ private fun EpubBookCard(
 
 @Composable
 private fun EpubBookListItem(
-    book: EpubPrototypeStore.ImportedEpub,
+    book: EpubStore.ImportedEpub,
     onOpen: (File) -> Unit,
-    onDetails: (EpubPrototypeStore.ImportedEpub) -> Unit,
+    onDetails: (EpubStore.ImportedEpub) -> Unit,
     onRemove: (File) -> Unit,
     loadCover: suspend (File) -> File?,
     enabled: Boolean,
@@ -893,6 +1236,15 @@ private fun EpubBookListItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                book.category?.takeIf(String::isNotBlank)?.let { category ->
+                    Text(
+                        category,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 val progress = book.progress()
                 if (progress > 0f) {
                     LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
@@ -963,7 +1315,7 @@ private fun BookOptionsMenu(
 
 @Composable
 private fun BookCover(
-    book: EpubPrototypeStore.ImportedEpub,
+    book: EpubStore.ImportedEpub,
     loadCover: suspend (File) -> File?,
     modifier: Modifier = Modifier,
 ) {
@@ -999,7 +1351,7 @@ private fun BookCover(
 
 @Composable
 internal fun EpubBookDetailsContent(
-    book: EpubPrototypeStore.ImportedEpub,
+    book: EpubStore.ImportedEpub,
     metadataJson: String?,
     metadataLoading: Boolean,
     metadataError: Boolean,
@@ -1421,8 +1773,8 @@ internal fun EpubAppearanceSheet(
                     IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, contentDescription = stringResource(KMR.strings.epub_reader_close_panel)) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FilterChip(selected = scroll, onClick = { onScrollMode(true) }, label = { Text(stringResource(KMR.strings.epub_prototype_scroll)) })
-                    FilterChip(selected = !scroll, onClick = { onScrollMode(false) }, label = { Text(stringResource(KMR.strings.epub_prototype_pages)) })
+                    FilterChip(selected = scroll, onClick = { onScrollMode(true) }, label = { Text(stringResource(KMR.strings.ebook_scroll)) })
+                    FilterChip(selected = !scroll, onClick = { onScrollMode(false) }, label = { Text(stringResource(KMR.strings.ebook_pages)) })
                 }
                 if (!fixedLayout) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1470,12 +1822,12 @@ internal fun EpubAppearanceSheet(
                 }
                 if (!fixedLayout) {
                     SheetSettingRow(
-                        title = stringResource(KMR.strings.epub_prototype_font),
+                        title = stringResource(KMR.strings.ebook_font),
                         value = fontName,
                         onClick = onFont,
                     )
                     SheetSettingRow(
-                        title = stringResource(KMR.strings.epub_prototype_layout),
+                        title = stringResource(KMR.strings.ebook_layout),
                         value = stringResource(KMR.strings.epub_reader_margins_spacing),
                         onClick = onLayout,
                     )
@@ -1503,7 +1855,7 @@ private fun SheetSettingRow(title: String, value: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun progressLabel(book: EpubPrototypeStore.ImportedEpub): String = when {
+private fun progressLabel(book: EpubStore.ImportedEpub): String = when {
     book.progress() >= 0.98f -> stringResource(KMR.strings.epub_library_finished)
     book.progress() > 0f || book.lastOpened > 0L ->
         stringResource(KMR.strings.epub_library_reading_progress, (book.progress() * 100).roundToInt())

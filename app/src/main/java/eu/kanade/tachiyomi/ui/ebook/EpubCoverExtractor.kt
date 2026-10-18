@@ -1,4 +1,5 @@
 // KMK -->
+// Extracts display-sized covers from imported EPUB files.
 package eu.kanade.tachiyomi.ui.ebook
 
 import android.graphics.Bitmap

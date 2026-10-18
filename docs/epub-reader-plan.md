@@ -1,21 +1,21 @@
 <!-- KMK -->
 # EPUB reader and manager implementation plan
 
-Status: Phase 0 development started on `feat/epub-reader`; engine/device acceptance is pending.
-See [Phase 0 prototype and testing](epub-phase0-testing.md). Remaining phases are proposed.
+Status: The EPUB reader is integrated into the production app source set, with an Ebook bottom navigation destination and Updates under More.
+See [reader verification and known limits](epub-reader-verification.md). The architecture notes below include original proposals that are not part of the current implementation.
 Benchmarks: Moon+ Reader for customization; Readest for visual clarity.
 Primary acceptance fixture: the user's approximately 1 GB EPUB on a named Android device.
 Scope: integrate into Komiyomi Ext without replacing or regressing its comic reader.
 
 ## 1. Feasibility and existing behavior
 
-This codebase can host a full EPUB reader; it is not currently a full text EPUB reader.
+The app now has a dedicated EPUB shelf and reflowable reader, separate from its comic catalog and manga reader.
 
 Verified integration points:
 
 | Existing file/module | Current behavior | Planned use |
 | --- | --- | --- |
-| `app/.../ui/home/HomeScreen.kt` and `LocalLibraryTab.kt` | Compose/Voyager local-library entry | Add Books within the existing local-library destination, not a sixth bottom tab |
+| `app/.../ui/home/HomeScreen.kt` and `ui/ebook/EbookTab.kt` | Compose/Voyager main navigation | Ebook opens the dedicated EPUB shelf; Updates opens from More |
 | `app/.../ui/home/LocalArchiveScreenModel.kt` | Comic scanning, metadata, Manga/Chapter progress | Reuse UI patterns, not its Manga/Chapter conversion flow |
 | `source-local/.../io/LocalArchiveCatalog.kt` | Discovers CBZ/CBR archives | Leave comic discovery intact; add a separate EPUB catalog |
 | `core/archive/.../EpubReader.kt` | Parses EPUB spine documents to extract images | Preserve existing illustrated/image EPUB compatibility |
@@ -26,10 +26,10 @@ Verified integration points:
 
 Paths containing `...` abbreviate existing package roots, not proposed literal directories.
 
-The current reader uses image/page-index progress. Reflowable books need publication
+The comic reader uses image/page-index progress. The ebook reader persists publication
 locations that remain meaningful after changing fonts, margins, orientation or screen size.
 
-## 2. Proposed implementation shape
+## 2. Original architecture proposal (not the current implementation)
 
 Start with one isolated engine module, not a new application or a generic reader framework:
 

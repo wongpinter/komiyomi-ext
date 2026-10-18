@@ -1,4 +1,5 @@
 // KMK -->
+// Reading layout preferences for the ebook reader.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -7,7 +8,7 @@ import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.TextAlign
 
 /** Bounded layout overrides for the debug EPUB reader, isolated from manga preferences. */
-internal object EpubPrototypeLayout {
+internal object EpubLayout {
     enum class Metric(val minimum: Double, val maximum: Double, val fallback: Double) {
         MARGINS(0.0, 4.0, 1.0),
         LINE_HEIGHT(1.0, 2.0, 1.2),
@@ -41,6 +42,7 @@ internal object EpubPrototypeLayout {
         require(value == null || value in alignments)
         return preferences.copy(
             textAlign = value,
+            hyphens = if (value == TextAlign.JUSTIFY && preferences.hyphens == null) true else preferences.hyphens,
             publisherStyles = if (value != null) false else preferences.publisherStyles,
         )
     }
@@ -52,6 +54,7 @@ internal object EpubPrototypeLayout {
         paragraphSpacing = null,
         paragraphIndent = null,
         textAlign = null,
+        hyphens = null,
         publisherStyles = null,
     )
 }

@@ -39,11 +39,11 @@
 ## Caveats
 
 - The public docs describe platform-neutral behavior while source code is a cross-platform app. Desktop, web, and native mobile controls differ; use mobile source paths for mobile-specific conclusions.
-- Readest supports many formats, syncing, search, and library organization beyond Komiyomi Ext's current debug-only EPUB prototype. Recommendations above are scoped adaptations, not claims that the local app already supports those features.
+- Readest supports many formats, syncing, search, and library organization beyond Komiyomi Ext's local EPUB reader. Recommendations above are scoped adaptations, not claims that the local app already supports those features.
 - This is a source/documentation review, not a screenshot-based visual audit of a running Readest build or the local app. Verify spacing, contrast, keyboard behavior, talkback labels, and tablet layout on-device before implementation sign-off.
 
 ## Suggested design skills for the next step
 
-- **Already available here:** `product-design:audit` — capture and assess the current local EPUB entry/library/reader flow before changing it; `designer-skill` or `design-partner:design` — polish the Compose library grid, reader controls, and right-side sheet; `codebase-design` — use if the UI change warrants separating EPUB library/navigation state from the existing debug prototype Activity.
+- **Already available here:** `product-design:audit` — capture and assess the current local EPUB entry/library/reader flow before changing it; `designer-skill` or `design-partner:design` — polish the Compose library grid, reader controls, and right-side sheet; `codebase-design` — use if a future UI change warrants separating EPUB library/navigation state from the existing Activity.
 - **Best additional skill to consider:** [UI/UX Pro Max](https://www.skills.sh/nextlevelbuilder/ui-ux-pro-max-skill/ui-ux-pro-max) has a native Jetpack Compose guideline stack, searchable design/accessibility guidance, and Compose-specific implementation rules. Its published install command is `npx skills add https://github.com/nextlevelbuilder/ui-ux-pro-max-skill --skill ui-ux-pro-max`; it is optional and was not installed. ([Compose stack listing](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/.claude/skills/ui-ux-pro-max/SKILL.md))
 - **Visual concept only:** `engineering-suite-mobile-mockup:imagegen-frontend-mobile` can explore a cover-library and reader-chrome visual direction, but it produces image mockups rather than native app code. Treat that as an optional pre-implementation aid, not the implementation skill.

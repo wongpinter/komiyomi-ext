@@ -175,6 +175,12 @@
         </activity>
         <!-- KMK -->
 
+        <!-- KMK -->
+        <activity
+            android:name=".ui.ebook.EbookActivity"
+            android:exported="false" />
+        <!-- KMK -->
+
         <activity
             android:name=".ui.security.UnlockActivity"
             android:exported="false"

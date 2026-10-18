@@ -1,5 +1,5 @@
 // KMK -->
-@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class, org.readium.r2.shared.InternalReadiumApi::class)
 
 package com.wongpinter.komiyomi.epub
 
@@ -102,6 +102,7 @@ class EpubEngine(context: Context) {
                     sectionCount = publication.readingOrder.size,
                     positionCount = positionCount,
                     positionBytes = EpubPositionPolicy.pageLength(fileBytes),
+                    sidebarTocRoots = publication.tableOfContents.size,
                 ),
             )
         } catch (error: Throwable) {
@@ -118,10 +119,25 @@ data class EpubOpenMetrics(
     val sectionCount: Int,
     val positionCount: Int,
     val positionBytes: Int,
+    val sidebarTocRoots: Int,
 )
 
-class EpubSession internal constructor(val publication: Publication, val openMetrics: EpubOpenMetrics) : Closeable {
-    val navigatorFactory = EpubNavigatorFactory(publication)
+class EpubSession internal constructor(
+    val publication: Publication,
+    val openMetrics: EpubOpenMetrics,
+) : Closeable {
+    val tableOfContents = publication.tableOfContents
+
+    // Readium 3.2's navigator copies its TOC map repeatedly on the UI thread. Keep the
+    // original publication for titled chapters and share its warmed positions with a TOC-free view.
+    private val navigatorPublication = Publication(
+        manifest = publication.manifest.copy(tableOfContents = emptyList()),
+        container = publication.container,
+        servicesBuilder = Publication.ServicesBuilder(
+            positions = { publication.findService(PositionsService::class) },
+        ),
+    )
+    val navigatorFactory = EpubNavigatorFactory(navigatorPublication)
     override fun close() = publication.close()
 }
 // KMK <--

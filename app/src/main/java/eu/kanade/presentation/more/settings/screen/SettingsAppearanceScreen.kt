@@ -331,10 +331,9 @@ object SettingsAppearanceScreen : SearchableSettings {
         return Preference.PreferenceGroup(
             stringResource(SYMR.strings.pref_category_navbar),
             preferenceItems = persistentListOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = uiPreferences.showNavUpdates(),
-                    title = stringResource(SYMR.strings.pref_hide_updates_button),
-                ),
+                // KMK -->
+                // Updates now has a stable entry in More.
+                // KMK <--
                 Preference.PreferenceItem.SwitchPreference(
                     preference = uiPreferences.showNavHistory(),
                     title = stringResource(SYMR.strings.pref_hide_history_button),

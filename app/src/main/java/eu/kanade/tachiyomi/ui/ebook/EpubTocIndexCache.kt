@@ -1,4 +1,5 @@
 // KMK -->
+// Caches searchable ebook contents indexes.
 package eu.kanade.tachiyomi.ui.ebook
 
 import kotlinx.coroutines.CoroutineDispatcher

@@ -1,4 +1,5 @@
 // KMK -->
+// Builds a lightweight, searchable index for ebook contents.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook

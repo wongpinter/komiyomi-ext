@@ -106,6 +106,9 @@ android {
     sourceSets {
         getByName("preview").res.srcDirs("src/beta/res")
         getByName("benchmark").res.srcDirs("src/debug/res")
+        // KMK -->
+        getByName("main").assets.srcDir("src/debug/assets")
+        // KMK <--
     }
 
     splits {
@@ -201,12 +204,15 @@ val verifyEpubPhotoView by tasks.registering(mihon.buildlogic.VerifyEpubPhotoVie
     photoViewAar.set(layout.file(providers.provider { epubPhotoViewReference.singleFile }))
 }
 configurations.configureEach {
-    if (name.startsWith("debug") && name.endsWith("RuntimeClasspath")) {
+    if (name.endsWith("RuntimeClasspath")) {
         // Readium embeds the EXACT existing PhotoView 2.3.0 classes; verified before use.
         exclude(group = "com.github.chrisbanes", module = "PhotoView")
     }
 }
-tasks.matching { it.name == "checkDebugDuplicateClasses" || it.name == "testDebugUnitTest" }.configureEach {
+tasks.matching {
+    (it.name.startsWith("check") && it.name.endsWith("DuplicateClasses")) ||
+        (it.name.startsWith("test") && it.name.endsWith("UnitTest"))
+}.configureEach {
     dependsOn(verifyEpubPhotoView)
 }
 // KMK <--
@@ -225,7 +231,7 @@ dependencies {
     // SY <--
     implementation(projects.core.archive)
     // KMK -->
-    debugImplementation(projects.core.epub)
+    implementation(projects.core.epub)
     // KMK <--
     implementation(projects.core.common)
     implementation(projects.coreMetadata)

@@ -1,5 +1,5 @@
 <!-- KMK -->
-# EPUB loading and index performance (debug prototype)
+# EPUB loading and index performance
 
 ## Source-proven bottlenecks in pinned Readium 3.2
 
@@ -11,8 +11,7 @@
 3. The default EPUB strategy creates roughly one synthetic point per 1,024 archive-entry bytes.
    A large, mostly stored-text omnibus can therefore create nearly a million locator objects.
 
-These are source findings, not a measured device regression. No Android device/emulator
-is attached; no end-to-end rendering speed or memory improvement is claimed yet.
+These are source findings, not device measurements. This document does not establish end-to-end rendering speed or memory use.
 
 ## Changes in this development slice
 
@@ -83,7 +82,7 @@ python3 scripts/epub/test_inspect_fixture.py
 
 ## Device measurement hooks
 
-The debug harness logs `EPUB performance:` with:
+The EPUB reader logs `EPUB performance:` with:
 - asset retrieval, publication parsing and index preparation durations in milliseconds;
 - section count, actual synthetic position count, chosen position byte length;
 - time from Fragment attachment start to the first page-loaded callback.

@@ -1,7 +1,7 @@
 <!-- KMK -->
 # EPUB reading fonts
 
-The experimental EPUB reader bundles six optional font families from the official
+The EPUB reader bundles six optional font families from the official
 [Google Fonts repository](https://github.com/google/fonts). Their reader roles follow
 the requested Kindle- and Kobo-inspired slots; the familiar names are comparison points,
 not claims that these typefaces are equivalent to proprietary fonts. These are reading
@@ -21,8 +21,7 @@ This is not a universal CJK, Arabic or Indic font collection.
 
 ## Files and provenance
 
-- Font assets are under `app/src/debug/assets/epub-fonts/<family>/`; they are included
-  in debug builds for the experimental reader.
+- Font assets are stored under `app/src/debug/assets/epub-fonts/<family>/` and included in all app variants through the main asset source set.
 - Each family has upright and italic TrueType variable fonts and its original `OFL.txt`.
   Weight ranges are declared from the families' published metadata. Original filenames
   and font internals are preserved.
@@ -45,7 +44,7 @@ the app font override and restores publisher styles, allowing the EPUB's CSS and
 preserving the book's other preferences. The current locator is checkpointed before the change;
 Readium reflows in the existing navigator without reopening the book.
 
-`EpubPrototypeFonts.kt` registers upright and italic variable faces with these weight ranges:
+`EpubFonts.kt` registers upright and italic variable faces with these weight ranges:
 Literata **200–900**, Crimson Pro **200–900**, Bitter **100–900**, Merriweather **300–900**,
 Inter **100–900**, and Atkinson Hyperlegible Next **200–800**. Merriweather also has optical-size
 and width axes; Literata has optical-size; Inter has optical-size. Assets load on demand, not

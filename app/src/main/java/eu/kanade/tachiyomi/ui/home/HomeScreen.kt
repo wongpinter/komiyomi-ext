@@ -83,7 +83,7 @@ object HomeScreen : Screen() {
         LibraryTab,
         LocalLibraryTab,
         BrowseTab,
-        UpdatesTab,
+        eu.kanade.tachiyomi.ui.ebook.EbookTab,
         MoreTab,
     )
     // KMK <--
@@ -180,7 +180,11 @@ object HomeScreen : Screen() {
                     openTabEvent.receiveAsFlow().collectLatest {
                         tabNavigator.current = when (it) {
                             is Tab.Library -> LibraryTab
-                            Tab.Updates -> UpdatesTab
+                            Tab.Updates -> {
+                                // KMK -->
+                                MoreTab
+                                // KMK <--
+                            }
                             Tab.History -> HistoryTab
                             is Tab.Browse -> {
                                 if (it.toExtensions) {
@@ -193,6 +197,11 @@ object HomeScreen : Screen() {
 
                         if (it is Tab.Library && it.mangaIdToOpen != null) {
                             navigator.push(MangaScreen(it.mangaIdToOpen))
+                        }
+                        if (it == Tab.Updates) {
+                            // KMK -->
+                            navigator.push(UpdatesTab)
+                            // KMK <--
                         }
                         if (it is Tab.More) {
                             if (it.toDownloads) {

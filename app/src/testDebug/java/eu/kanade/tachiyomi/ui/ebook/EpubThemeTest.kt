@@ -1,4 +1,5 @@
 // KMK -->
+// Theme coverage for the shipped ebook reader.
 package eu.kanade.tachiyomi.ui.ebook
 
 import androidx.compose.material3.lightColorScheme
@@ -6,7 +7,7 @@ import androidx.compose.ui.graphics.Color
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
-class EpubPrototypeThemeTest {
+class EpubThemeTest {
     @Test
     fun `reader chrome follows the full manga app theme`() {
         val appColors = lightColorScheme(

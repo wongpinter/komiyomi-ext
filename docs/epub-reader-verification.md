@@ -1,8 +1,7 @@
 <!-- KMK -->
-# EPUB Phase 0: isolated Android prototype
+# EPUB reader verification and known limits
 
-This is an engine evaluation harness, not the final Books manager/design.
-Branch: `feat/epub-reader`.
+This document records the EPUB reader implementation, validation evidence, and known limits. Its shelf, reading positions and preferences remain separate from manga data.
 
 ## Implementation
 
@@ -11,18 +10,19 @@ Branch: `feat/epub-reader`.
   [Index/load optimizations](epub-performance.md) prepare cached positions on IO and
   use coarser synthetic position density for oversized files, without dropping chapters.
 - The renderer, state holder, locator/preferences store and unexported Activity live in
-  `app/src/debug/`; `debugImplementation` keeps Readium out of the app's release graph.
-- Readium embeds PhotoView 2.3.0, already used by manga. Debug runtime removes the duplicate
-  external artifact only after `verifyEpubPhotoView` proves all 22 bundled class files are
-  byte-identical to the original dependency. A mismatch blocks the build; release is unchanged.
-- Debug builds expose **More -> EPUB reader (experimental)**.
-  Main navigation, Local comic catalog and manga reader are not replaced.
+  `app/src/main/java/eu/kanade/tachiyomi/ui/ebook/`; `implementation(projects.core.epub)` includes them
+  in every app build.
+- Readium embeds PhotoView 2.3.0, already used by manga. Runtime dependency graphs exclude the duplicate
+  external artifact only after `verifyEpubPhotoView` proves all 22 bundled class files are byte-identical
+  to the original dependency. A mismatch blocks the build.
+- **Ebook** is a bottom navigation destination. **Updates** opens from More.
+  The EPUB library, comic catalog and manga reader remain separate.
 - Import uses the Android document picker, makes an explicit managed local copy,
   buffers 64 KiB, reports transferred bytes, checks space and cleans up ordinary
   cancellation/failure staging files.
-- Copies are under app-private `noBackupFilesDir/epub-prototype`.
+- Copies are kept in app-private no-backup storage, preserving imported books and reading state across app upgrades.
   Original selected files are not modified. Cloud-backed selections require a full copy.
-- Reopening the prototype automatically resumes the last successfully opened copy.
+- Reopening Ebook automatically resumes the last successfully opened copy.
 - Vertical scrolling is the default. Center taps reveal controls; system bars are hidden
   while reading. Basic text-size and optional left-to-right pagination controls are present.
 - Book sections use recycled list rows instead of eagerly generating every spine label.
@@ -35,23 +35,18 @@ Branch: `feat/epub-reader`.
   use the selected app `TachiyomiTheme`; only the reading page keeps its separate light/sepia/dark setting.
   Reopen any copy with its own locator/preferences, or confirm removal of just that copy. Failed opening of an
   older copy never deletes it. No book is parsed just to display the list.
-- Close book returns to import controls. Remove imported copies requires confirmation,
-  frees only prototype-owned copies/staging files and resets only prototype state.
+- Close book returns to the shelf. Remove imported copies requires confirmation,
+  frees only app-managed copies/staging files and clears only EPUB reader state.
 
 ## Current limits
 
-- The bookshelf remains an experimental debug prototype; no production book catalog, annotations,
-  app-backup integration or user font-file import yet. Per-book margin/line/paragraph/alignment controls
-  are available in the debug reflowable reader; see [layout settings](epub-layout-settings.md).
-  Five bundled Google font families
-  are selectable per reflowable book in the debug reader; see [font details](epub-fonts.md).
-- Only trusted DRM-free EPUBs should be used. Publication HTML/script/remote-resource
-  isolation needs a separate security review before enabling this in production.
-  External hyperlink activation is blocked by the harness; this is not a claim that
-  every remote subresource is blocked by the renderer.
+- The shelf manages imported local EPUBs. Annotations, app-backup integration and user font-file imports are not supported.
+  Per-book margin/line/paragraph/alignment controls are available for reflowable books; see [layout settings](epub-layout-settings.md).
+  Six bundled Google font families are selectable for reflowable books; see [font details](epub-fonts.md).
+- Use trusted DRM-free EPUBs. External hyperlink activation is blocked; remote subresource behavior has not been separately verified, so this does not claim that every remote resource is blocked by the renderer.
 - Each explicit import creates a separate managed copy. There is no duplicate manager yet.
-- Progress/reader lifecycle and navigation interactions need real Android testing.
-  Source compilation/unit tests do not prove rendered behavior.
+- Large-file rendering, WebView memory and exact resume behavior still need the full device acceptance run below.
+  Source compilation and unit tests do not prove rendered behavior.
 - Process termination during import can leave a staging file. Remove imported copies
   also removes such abandoned files; an interrupted import is never published for resume.
 - Rendering/gesture performance for very large single XHTML resources is unproven.
@@ -62,18 +57,31 @@ Branch: `feat/epub-reader`.
 - Ordered spotlessApply -> spotlessCheck -> assembleDebug: passed.
 - EpubImporterTest: 8 passed; bounded reads, exact copy, truncated/empty inputs,
   low disk, provider errors, cancellation and staging cleanup.
-- Multi-book baseline EpubPrototypeStoreTest: 9 passed; isolated per-book preferences, latest-position
+- Multi-book baseline EpubStoreTest: 9 passed; isolated per-book preferences, latest-position
   overwrite policy, managed-path checks, multi-book metadata/order, legacy copy discovery,
   selective deletion and cleanup preserving external originals.
 - Metadata inspector: 10 synthetic Python tests; bounded reads/decompression, path resolution,
   missing resources and DTD/entity rejection including UTF-16. No private book content in tests.
 - verifyEpubPhotoView: all 22 bundled classes byte-identical; duplicate-class gate passed.
-- App releaseRuntimeClasspath: no Readium artifacts.
+- At that time, App releaseRuntimeClasspath had no Readium artifacts; the production
+  promotion verified below now includes the EPUB engine in app variants.
 - git diff --check: passed.
 - EPUB shelf UI smoke on Oppo CPH2529 / Android 15: selected app theme, imported covers, small/medium/large grid sizes, list view and Finished filter rendered. The 1 GB title was visible in the shelf but was not opened during this UI pass.
 - Full 1 GB reader traversal/performance validation was not part of this UI pass.
 
-These checks establish build/storage behavior, not production reader readiness.
+These earlier checks establish build/storage behavior, not full large-book readiness.
+
+## Production promotion verification (2026-10-18)
+
+- `spotlessApply`, `spotlessCheck`, `assembleDebug` and `assemblePreview` passed.
+  The Android build emitted D8 Kotlin-metadata compatibility warnings, but no task failed.
+- Installed the debug APK on Oppo CPH2529 / Android 15. The Ebook tab opened the
+  existing shelf with all three books, including `Nurseholic - Collected Works`;
+  this confirms the old preference and app-private storage identifiers still find
+  imported data after the source-set promotion. The large book was visible but not opened.
+- Back from the shelf returned to Library. More displayed Updates, and selecting it
+  opened the Updates screen. The manga and ebook shelves remained distinct.
+- `git diff --check` passed.
 
 ## Device acceptance run
 
@@ -84,7 +92,7 @@ No full fixture download or device benchmark has been performed. Authenticated, 
 remote ZIP/package reads are a separate metadata-only check (see below); they do not test rendering.
 
 1. Build/install debug APK; confirm normal manga reading/settings still behave as before.
-2. Open the experimental More entry. Import the fixture after reading the copy warning.
+2. Open the Ebook tab. Import the fixture after reading the copy notice.
 3. Record copy duration/free space and publication-open duration separately.
 4. Profile app AND WebView renderer memory, not only the Kotlin/JVM heap.
 5. Read/scroll at the beginning, jump to a middle/last section and exercise large images.
@@ -97,7 +105,7 @@ remote ZIP/package reads are a separate metadata-only check (see below); they do
 10. Confirm removing one copy preserves the other copy/progress, and Remove imported copies
     does not touch source books or manga data. Try a damaged older copy: failure must not delete it.
 11. Compare latency/memory on the same device/book with Moon+ Reader/Readest if available.
-12. Agree pass/fail budgets from measurements before moving to the production catalog.
+12. Record latency and memory measurements against the agreed acceptance budgets.
 
 ## Remote fixture metadata (2026-10-17)
 
@@ -134,8 +142,8 @@ python3 scripts/epub/inspect_fixture.py /path/to/book.epub --max-xml-bytes 33554
 
 The inspector caps each remote range at 16 MiB and metadata XML at 8 MiB by default;
 it rejects DTD/entities before expansion, including UTF-16 declarations. It does not
-invoke the Android renderer. Five Google font families were subsequently downloaded and
-registered for per-book selection in the debug reader; user-provided font imports remain future work.
+invoke the Android renderer. Six Google font families were subsequently registered for per-book
+selection in the EPUB reader; user-provided font imports remain unsupported.
 
 ## Checks
 
@@ -144,11 +152,11 @@ registered for per-book selection in the debug reader; user-provided font import
 ./gradlew spotlessCheck
 ./gradlew assembleDebug
 ./gradlew :core:epub:testDebugUnitTest --tests '*EpubImporterTest'
-./gradlew :app:testDebugUnitTest --tests '*EpubPrototypeStoreTest'
+./gradlew :app:testDebugUnitTest --tests '*EpubStoreTest'
 ./gradlew :app:dependencies --configuration releaseRuntimeClasspath
 python3 scripts/epub/test_inspect_fixture.py
 ```
 
-The release dependency report must not contain Readium artifacts. A release app build and
-manga regression/device smoke checks remain required before production rollout.
+The release dependency report should include `:core:epub` and Readium. A release-like app build and
+manga regression/device smoke checks remain useful before publishing.
 <!-- KMK -->

@@ -1,4 +1,5 @@
 // KMK -->
+// Table-of-contents sheet for the ebook reader.
 package eu.kanade.tachiyomi.ui.ebook
 
 import android.content.res.ColorStateList
@@ -199,7 +200,8 @@ internal object EpubTocSheet {
                 currentButton.isEnabled = false
                 status.text = stringResource(KMR.strings.epub_toc_loading)
                 try {
-                    val built = loadIndex().also { current = it.currentEntry(currentHref) }
+                    val built = loadIndex()
+                    current = withContext(Dispatchers.Default) { built.currentEntry(currentHref) }
                     currentButton.isEnabled = current >= 0
                     query.collectLatest { value ->
                         progress.visibility = View.VISIBLE
@@ -243,8 +245,8 @@ internal object EpubTocSheet {
         }
         more.setOnClickListener {
             PopupMenu(this, more).apply {
-                menu.add(stringResource(KMR.strings.epub_prototype_middle_section)).isEnabled = readingOrder.isNotEmpty()
-                menu.add(stringResource(KMR.strings.epub_prototype_last_section)).isEnabled = readingOrder.isNotEmpty()
+                menu.add(stringResource(KMR.strings.ebook_middle_section)).isEnabled = readingOrder.isNotEmpty()
+                menu.add(stringResource(KMR.strings.ebook_last_section)).isEnabled = readingOrder.isNotEmpty()
                 setOnMenuItemClickListener { item ->
                     val target = if (item === menu.getItem(0)) readingOrder.getOrNull(readingOrder.size / 2) else readingOrder.lastOrNull()
                     target?.let { navigate(it) }

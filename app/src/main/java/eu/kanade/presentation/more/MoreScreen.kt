@@ -65,7 +65,6 @@ fun MoreScreen(
     incognitoMode: Boolean,
     onIncognitoModeChange: (Boolean) -> Unit,
     // SY -->
-    showNavUpdates: Boolean,
     showNavHistory: Boolean,
     // SY <--
     onClickDownloadQueue: () -> Unit,
@@ -79,7 +78,6 @@ fun MoreScreen(
     onClickHistory: () -> Unit,
     // KMK -->
     onClickLibraryUpdateErrors: () -> Unit,
-    onClickEpubPrototype: (() -> Unit)? = null,
     // KMK <--
 ) {
     val uriHandler = LocalUriHandler.current
@@ -122,29 +120,16 @@ fun MoreScreen(
 
             item { HorizontalDivider() }
 
+            // SY -->
             // KMK -->
-            if (onClickEpubPrototype != null) {
-                item {
-                    TextPreferenceWidget(
-                        title = stringResource(KMR.strings.epub_prototype_title),
-                        subtitle = stringResource(KMR.strings.epub_prototype_summary),
-                        icon = Icons.Outlined.Storage,
-                        onPreferenceClick = onClickEpubPrototype,
-                    )
-                }
+            item {
+                TextPreferenceWidget(
+                    title = stringResource(MR.strings.label_recent_updates),
+                    icon = Icons.Outlined.NewReleases,
+                    onPreferenceClick = onClickUpdates,
+                )
             }
             // KMK <--
-
-            // SY -->
-            if (!showNavUpdates) {
-                item {
-                    TextPreferenceWidget(
-                        title = stringResource(MR.strings.label_recent_updates),
-                        icon = Icons.Outlined.NewReleases,
-                        onPreferenceClick = onClickUpdates,
-                    )
-                }
-            }
             if (!showNavHistory) {
                 item {
                     TextPreferenceWidget(

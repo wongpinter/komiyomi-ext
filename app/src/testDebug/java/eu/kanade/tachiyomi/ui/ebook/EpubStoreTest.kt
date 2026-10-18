@@ -1,4 +1,5 @@
 // KMK -->
+// Persistence coverage for the ebook shelf and reader.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -19,11 +20,11 @@ import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.shared.publication.Locator
 import java.io.File
 
-class EpubPrototypeStoreTest {
+class EpubStoreTest {
     @TempDir lateinit var directory: File
     private val values = mutableMapOf<String, String?>()
 
-    private fun store(): EpubPrototypeStore {
+    private fun store(): EpubStore {
         val context = mockk<Context>()
         val preferences = mockk<SharedPreferences>()
         val editor = mockk<SharedPreferences.Editor>(relaxed = true)
@@ -44,7 +45,7 @@ class EpubPrototypeStoreTest {
             values.clear()
             editor
         }
-        return EpubPrototypeStore(context).also {
+        return EpubStore(context).also {
             verify(exactly = 1) { context.getSharedPreferences("epub_prototype", Context.MODE_PRIVATE) }
         }
     }
@@ -94,7 +95,7 @@ class EpubPrototypeStoreTest {
     }
 
     @Test
-    fun `cleanup removes only prototype copies and state not external books`() {
+    fun `cleanup removes only app-managed copies and state, not external books`() {
         val store = store()
         store.directory.mkdirs()
         val copy = File(store.directory, "copy.epub").apply { writeText("copy") }
@@ -210,16 +211,16 @@ class EpubPrototypeStoreTest {
         val first = File(store.directory, "first.epub")
         val second = File(store.directory, "second.epub")
         val original = EpubPreferences(scroll = false, fontSize = 1.6, pageMargins = 1.2)
-        val literata = EpubPrototypeFonts.families.first().fontFamily
-        val lora = EpubPrototypeFonts.families[2].fontFamily
-        store.savePreferences(first, EpubPrototypeFonts.select(original, literata))
-        store.savePreferences(second, EpubPrototypeFonts.select(EpubPreferences(scroll = true), lora))
+        val literata = EpubFonts.families.first().fontFamily
+        val lora = EpubFonts.families[2].fontFamily
+        store.savePreferences(first, EpubFonts.select(original, literata))
+        store.savePreferences(second, EpubFonts.select(EpubPreferences(scroll = true), lora))
 
         // A new store instance must recover the serialized font family, not a process-local field.
         val reopened = store()
         assertEquals(literata, reopened.readerPreferences(first).fontFamily)
         assertEquals(lora, reopened.readerPreferences(second).fontFamily)
-        reopened.savePreferences(first, EpubPrototypeFonts.select(reopened.readerPreferences(first), null))
+        reopened.savePreferences(first, EpubFonts.select(reopened.readerPreferences(first), null))
         assertEquals(original, reopened.readerPreferences(first))
         assertEquals(lora, reopened.readerPreferences(second).fontFamily)
     }
@@ -229,19 +230,19 @@ class EpubPrototypeStoreTest {
         val store = store()
         val first = File(store.directory, "first.epub")
         val second = File(store.directory, "second.epub")
-        val original = EpubPreferences(scroll = true, fontSize = 1.5, fontFamily = EpubPrototypeFonts.families.first().fontFamily)
-        var custom = EpubPrototypeLayout.set(original, EpubPrototypeLayout.Metric.MARGINS, 1.8)
-        custom = EpubPrototypeLayout.set(custom, EpubPrototypeLayout.Metric.LINE_HEIGHT, 1.6)
-        custom = EpubPrototypeLayout.set(custom, EpubPrototypeLayout.Metric.PARAGRAPH_SPACING, 0.6)
-        custom = EpubPrototypeLayout.set(custom, EpubPrototypeLayout.Metric.PARAGRAPH_INDENT, 1.2)
-        custom = EpubPrototypeLayout.align(custom, org.readium.r2.navigator.preferences.TextAlign.JUSTIFY)
+        val original = EpubPreferences(scroll = true, fontSize = 1.5, fontFamily = EpubFonts.families.first().fontFamily)
+        var custom = EpubLayout.set(original, EpubLayout.Metric.MARGINS, 1.8)
+        custom = EpubLayout.set(custom, EpubLayout.Metric.LINE_HEIGHT, 1.6)
+        custom = EpubLayout.set(custom, EpubLayout.Metric.PARAGRAPH_SPACING, 0.6)
+        custom = EpubLayout.set(custom, EpubLayout.Metric.PARAGRAPH_INDENT, 1.2)
+        custom = EpubLayout.align(custom, org.readium.r2.navigator.preferences.TextAlign.JUSTIFY)
         store.savePreferences(first, custom)
         store.savePreferences(second, EpubPreferences(scroll = false, pageMargins = 0.4))
         val reopened = store()
         assertEquals(custom, reopened.readerPreferences(first))
         assertEquals(0.4, reopened.readerPreferences(second).pageMargins)
         assertNull(reopened.readerPreferences(second).lineHeight)
-        reopened.savePreferences(first, EpubPrototypeLayout.reset(reopened.readerPreferences(first)))
+        reopened.savePreferences(first, EpubLayout.reset(reopened.readerPreferences(first)))
         assertEquals(original, store().readerPreferences(first))
         assertEquals(0.4, reopened.readerPreferences(second).pageMargins)
     }

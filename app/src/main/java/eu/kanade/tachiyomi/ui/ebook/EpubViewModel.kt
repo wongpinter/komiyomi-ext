@@ -1,4 +1,5 @@
 // KMK -->
+// Ebook shelf and reader state holder.
 @file:OptIn(org.readium.r2.shared.ExperimentalReadiumApi::class)
 
 package eu.kanade.tachiyomi.ui.ebook
@@ -28,18 +29,20 @@ import org.readium.r2.shared.publication.Locator
 import java.io.File
 import java.io.IOException
 
-internal class EpubPrototypeViewModel(application: Application) : AndroidViewModel(application) {
-    private val store = EpubPrototypeStore(application)
+internal class EpubViewModel(application: Application) : AndroidViewModel(application) {
+    private val store = EpubStore(application)
     private val engine = EpubEngine(application)
 
-    fun shelfSettings(): EpubPrototypeStore.ShelfSettings = store.shelfSettings()
+    fun shelfSettings(): EpubStore.ShelfSettings = store.shelfSettings()
 
-    fun saveShelfSettings(settings: EpubPrototypeStore.ShelfSettings) = store.saveShelfSettings(settings)
+    fun saveShelfSettings(settings: EpubStore.ShelfSettings) = store.saveShelfSettings(settings)
     private val importer = EpubImporter(store.directory)
     private val mutableState = MutableStateFlow<State>(State.Idle)
     val state = mutableState.asStateFlow()
-    private val mutableBooks = MutableStateFlow<List<EpubPrototypeStore.ImportedEpub>>(emptyList())
+    private val mutableBooks = MutableStateFlow<List<EpubStore.ImportedEpub>>(emptyList())
     val books = mutableBooks.asStateFlow()
+    private val mutableFolderSources = MutableStateFlow(store.folderSources())
+    val folderSources = mutableFolderSources.asStateFlow()
     private val mutableLibraryLoading = MutableStateFlow(true)
     val libraryLoading = mutableLibraryLoading.asStateFlow()
     private val mutableLibraryError = MutableStateFlow(false)
@@ -131,6 +134,86 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
         }
     }
 
+    fun addFolderSource(uri: Uri) {
+        launchFolderScan {
+            val resolver = getApplication<Application>().contentResolver
+            val name = EpubFolderScanner.folderName(resolver, uri)
+            listOf(store.addFolderSource(uri, name)).also { mutableFolderSources.value = store.folderSources() }
+        }
+    }
+
+    fun scanFolderSources() {
+        launchFolderScan { store.folderSources() }
+    }
+
+    fun removeFolderSource(uri: String) {
+        if (openingJob?.isActive == true || session != null) return
+        mutableState.value = State.UpdatingFolders
+        openingJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val source = store.folderSources().firstOrNull { it.uri == uri }
+                if (source != null) {
+                    val resolver = getApplication<Application>().contentResolver
+                    val scanner = EpubFolderScanner(resolver, importer, store)
+                    val sourceUris = scanner.documentsIn(source)
+                    store.removeFolderImports(uri, sourceUris)
+                    runCatching {
+                        resolver.releasePersistableUriPermission(
+                            Uri.parse(uri),
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                    }
+                    store.removeFolderSource(uri)
+                }
+                mutableFolderSources.value = store.folderSources()
+                mutableBooks.value = store.importedBooks()
+                mutableLibraryError.value = false
+                mutableState.value = State.Idle
+            } catch (error: CancellationException) {
+                mutableState.value = State.Idle
+                throw error
+            } catch (error: Exception) {
+                xLogE("Unable to remove EPUB folder source and imported copies", error)
+                mutableBooks.value = runCatching { store.importedBooks() }.getOrDefault(mutableBooks.value)
+                mutableState.value = State.Failed(insufficientSpace = false, removalFailed = true)
+            }
+        }
+    }
+
+    private fun launchFolderScan(resolveSources: suspend () -> List<EpubStore.FolderSource>) {
+        if (openingJob?.isActive == true || session != null) return
+        mutableState.value = State.Scanning()
+        openingJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resolver = getApplication<Application>().contentResolver
+                val sources = resolveSources()
+                val scanner = EpubFolderScanner(resolver, importer, store)
+                val result = scanner.scan(sources) { progress ->
+                    mutableState.value = State.Scanning(
+                        found = progress.found,
+                        added = progress.added,
+                        skipped = progress.skipped,
+                        failed = progress.failed,
+                        currentName = progress.currentName,
+                        bytes = progress.bytes,
+                        totalBytes = progress.totalBytes,
+                    )
+                }
+                mutableBooks.value = store.importedBooks()
+                mutableFolderSources.value = store.folderSources()
+                mutableLibraryError.value = false
+                mutableState.value = State.ScanComplete(result.added, result.skipped, result.failed, result.insufficientSpace)
+            } catch (error: CancellationException) {
+                mutableBooks.value = runCatching { store.importedBooks() }.getOrDefault(mutableBooks.value)
+                mutableState.value = State.Idle
+                throw error
+            } catch (error: Exception) {
+                xLogE("Unable to scan EPUB folders", error)
+                mutableState.value = State.Failed(error is InsufficientEpubSpace)
+            }
+        }
+    }
+
     private fun launchOpen(newImport: Boolean = false, getFile: suspend () -> File) {
         mutableState.value = State.Opening
         openingJob = viewModelScope.launch(Dispatchers.IO) {
@@ -163,7 +246,7 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
                 mutableState.value = State.Idle
                 throw error
             } catch (error: Exception) {
-                xLogE("Unable to open EPUB prototype", error)
+                xLogE("Unable to open EPUB", error)
                 mutableState.value = State.Failed(error is InsufficientEpubSpace)
             } finally {
                 if (!transferred) {
@@ -189,27 +272,14 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
             val publication = state.session.publication
             val startedAt = System.nanoTime()
             val index = EpubTocIndex.build(
-                publication.tableOfContents.ifEmpty { publication.readingOrder },
+                state.session.tableOfContents.ifEmpty { publication.readingOrder },
                 title = { it.title?.takeIf(String::isNotBlank) ?: it.href.toString() },
                 href = { it.href.toString() },
                 children = { it.children },
-                toLocator = { publication.locatorFromLink(it) },
             )
             xLogI("EPUB performance: TOC index readyMs=${(System.nanoTime() - startedAt) / 1_000_000} entries=${index.entries.size}")
             index
         }
-
-    fun prewarmTocIndex(state: State.Ready) {
-        viewModelScope.launch {
-            try {
-                tocIndex(state)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                xLogE("Unable to pre-index EPUB table of contents", error)
-            }
-        }
-    }
 
     fun removeImportedCopies() = removeCopies { store.clearImportedCopies() }
 
@@ -226,7 +296,7 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
                 mutableState.value = State.Idle
                 throw error
             } catch (error: Exception) {
-                xLogE("Unable to remove experimental EPUB copies", error)
+                xLogE("Unable to remove imported EPUB copies", error)
                 mutableState.value = State.Failed(insufficientSpace = false, removalFailed = true)
             }
         }
@@ -257,7 +327,18 @@ internal class EpubPrototypeViewModel(application: Application) : AndroidViewMod
         data object Idle : State
         data object Opening : State
         data object Removing : State
+        data object UpdatingFolders : State
         data class Importing(val bytes: Long, val total: Long?) : State
+        data class Scanning(
+            val found: Int = 0,
+            val added: Int = 0,
+            val skipped: Int = 0,
+            val failed: Int = 0,
+            val currentName: String? = null,
+            val bytes: Long = 0,
+            val totalBytes: Long? = null,
+        ) : State
+        data class ScanComplete(val added: Int, val skipped: Int, val failed: Int, val insufficientSpace: Boolean) : State
         data class Ready(val file: File, val session: EpubSession) : State
         data class Failed(val insufficientSpace: Boolean, val removalFailed: Boolean = false) : State
     }
