@@ -90,13 +90,25 @@ internal class EpubStore(context: Context) {
     fun latestFile(): File? {
         val name = preferences.getString("latest", null) ?: return null
         return File(directory, name).takeIf {
-            it.canonicalFile.parentFile == directory.canonicalFile && it.extension == "epub" && it.isFile
+            it.canonicalFile.parentFile == directory.canonicalFile && EbookFormat.fromFileName(it.name) != null && it.isFile
         }
     }
 
     private fun requireManaged(file: File) {
-        require(file.canonicalFile.parentFile == directory.canonicalFile && file.extension == "epub") {
-            "Not a managed EPUB copy"
+        require(file.canonicalFile.parentFile == directory.canonicalFile && EbookFormat.fromFileName(file.name) != null) {
+            "Not a managed ebook copy"
+        }
+    }
+
+    fun bookTitle(file: File): String? {
+        requireManaged(file)
+        return preferences.getString("title-${file.name}", null)?.takeIf(String::isNotBlank)
+    }
+
+    fun saveBookTitle(file: File, title: String) {
+        requireManaged(file)
+        title.trim().takeIf(String::isNotBlank)?.let { value ->
+            preferences.edit { putString("title-${file.name}", value.take(512)) }
         }
     }
 
@@ -120,14 +132,29 @@ internal class EpubStore(context: Context) {
     fun importedBooks(): List<ImportedEpub> {
         if (!directory.exists()) return emptyList()
         return (directory.listFiles() ?: throw java.io.IOException("Cannot list managed EPUB copies"))
-            .filter { it.isFile && it.extension == "epub" && it.canonicalFile.parentFile == directory.canonicalFile }
+            .filter { it.isFile && EbookFormat.fromFileName(it.name) != null && it.canonicalFile.parentFile == directory.canonicalFile }
             .map { file ->
-                val progress = locator(file)?.locations?.totalProgression?.toFloat()?.coerceIn(0f, 1f)
-                val chapterCount = preferences.getInt("chapters-${file.name}", -1).takeIf { it >= 0 }
-                    ?: EpubCoverExtractor.readingOrderCount(file)?.also { count ->
-                        preferences.edit { putInt("chapters-${file.name}", count) }
+                val format = EbookFormat.fromFile(file)
+                val pdfPage = preferences.getInt("pdf-page-${file.name}", -1)
+                val savedPageCount = preferences.getInt("chapters-${file.name}", -1).takeIf { it > 0 }
+                val progress = if (format == EbookFormat.PDF) {
+                    if (pdfPage >= 0 && savedPageCount != null) {
+                        ((pdfPage + 1f) / savedPageCount).coerceIn(0f, 1f)
+                    } else {
+                        null
                     }
-                    ?: 0
+                } else {
+                    locator(file)?.locations?.totalProgression?.toFloat()?.coerceIn(0f, 1f)
+                }
+                val cachedChapterCount = preferences.getInt("chapters-${file.name}", -1).takeIf { it >= 0 }
+                val extractedChapterCount = if (format == EbookFormat.EPUB) {
+                    EpubCoverExtractor.readingOrderCount(file)
+                } else {
+                    null
+                }
+                val chapterCount = cachedChapterCount ?: extractedChapterCount?.also { count ->
+                    preferences.edit { putInt("chapters-${file.name}", count) }
+                } ?: 0
                 ImportedEpub(
                     file = file,
                     title = preferences.getString("title-${file.name}", null) ?: file.nameWithoutExtension,
@@ -148,7 +175,7 @@ internal class EpubStore(context: Context) {
         val key = sourceImportKey(uri)
         val name = preferences.getString(key, null) ?: return null
         val file = File(directory, name)
-        if (file.isFile && file.extension == "epub" && file.canonicalFile.parentFile == directory.canonicalFile) return file
+        if (file.isFile && EbookFormat.fromFileName(file.name) != null && file.canonicalFile.parentFile == directory.canonicalFile) return file
         preferences.edit { remove(key) }
         return null
     }
@@ -219,7 +246,7 @@ internal class EpubStore(context: Context) {
     }
 
     private fun managedFile(name: String?): File? = name?.let { File(directory, it) }?.takeIf {
-        it.isFile && it.extension == "epub" && it.canonicalFile.parentFile == directory.canonicalFile
+        it.isFile && EbookFormat.fromFileName(it.name) != null && it.canonicalFile.parentFile == directory.canonicalFile
     }
 
     private fun folderImportOwners(uri: Uri): List<FolderImportOwner> = folderImportOwners(sourceOwnersKey(uri))
@@ -281,7 +308,7 @@ internal class EpubStore(context: Context) {
 
     fun cachedCover(file: File): File? {
         requireManaged(file)
-        return File(File(directory, "covers"), "${file.nameWithoutExtension}.jpg").takeIf(File::isFile)
+        return File(File(directory, "covers"), coverName(file)).takeIf(File::isFile)
     }
 
     fun ensureCover(file: File): File? {
@@ -290,10 +317,16 @@ internal class EpubStore(context: Context) {
             cachedCover(file)?.let { return@synchronized it }
             val targetDirectory = File(directory, "covers")
             if (!targetDirectory.isDirectory && !targetDirectory.mkdirs()) return@synchronized null
-            val target = File(targetDirectory, "${file.nameWithoutExtension}.jpg")
-            EpubCoverExtractor.writeThumbnail(file, target)
+            val target = File(targetDirectory, coverName(file))
+            when (EbookFormat.fromFile(file)) {
+                EbookFormat.EPUB -> EpubCoverExtractor.writeThumbnail(file, target)
+                EbookFormat.PDF -> PdfCoverExtractor.writeThumbnail(file, target)
+            }
         }
     }
+
+    private fun coverName(file: File): String =
+        if (EbookFormat.fromFile(file) == EbookFormat.PDF) "${file.nameWithoutExtension}-pdf.jpg" else "${file.nameWithoutExtension}.jpg"
 
     fun hasBookmark(file: File): Boolean {
         requireManaged(file)
@@ -329,11 +362,15 @@ internal class EpubStore(context: Context) {
                 .filter { (key, value) -> key.startsWith("source-file-") && value == file.name }
                 .keys
             val ownersKeys = sourceKeys.map(::sourceOwnersKey)
+            val pdfSettingsKeys = preferences.all.keys.filter {
+                it.startsWith("pdf-reader-${file.name}-") || it == "pdf-bookmarks-${file.name}"
+            }
             if (file.exists() && !file.delete()) throw java.io.IOException("Cannot remove managed EPUB copy")
             cachedCover(file)?.let { if (!it.delete()) throw java.io.IOException("Cannot remove EPUB cover thumbnail") }
             if (metadata.exists() && !metadata.delete()) throw java.io.IOException("Cannot remove EPUB metadata cache")
             preferences.edit {
-                listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme", "chapters").forEach { remove("$it-${file.name}") }
+                listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme", "chapters", "pdf-page").forEach { remove("$it-${file.name}") }
+                pdfSettingsKeys.forEach { remove(it) }
                 remove("category-${file.name}")
                 sourceKeys.forEach { remove(it) }
                 ownersKeys.forEach { remove(it) }
@@ -353,7 +390,9 @@ internal class EpubStore(context: Context) {
         val addedAt: Long = file.lastModified(),
         val chapterCount: Int = 0,
         val category: String? = null,
-    )
+    ) {
+        val format: EbookFormat get() = EbookFormat.fromFile(file)
+    }
 
     fun clearImportedCopies() {
         // This directory contains only app-managed copies, never user-selected originals.
@@ -364,7 +403,7 @@ internal class EpubStore(context: Context) {
                 emptyArray()
             }
             files.forEach { file ->
-                if (file.isFile && file.extension in setOf("epub", "part") && !file.delete()) {
+                if (file.isFile && (EbookFormat.fromFileName(file.name) != null || file.extension == "part") && !file.delete()) {
                     throw java.io.IOException("Cannot remove managed EPUB copy")
                 }
             }
@@ -400,6 +439,65 @@ internal class EpubStore(context: Context) {
 
     fun saveLocator(file: File, locator: Locator) {
         preferences.edit { putString("location-${file.name}", locator.toJSON().toString()) }
+    }
+
+    fun pdfPage(file: File): Int {
+        requireManaged(file)
+        return preferences.getInt("pdf-page-${file.name}", 0)
+    }
+
+    fun savePdfPage(file: File, pageIndex: Int) {
+        requireManaged(file)
+        preferences.edit { putInt("pdf-page-${file.name}", pageIndex.coerceAtLeast(0)) }
+    }
+
+    fun pdfReaderSettings(file: File): PdfReaderSettings {
+        requireManaged(file)
+        val prefix = "pdf-reader-${file.name}-"
+        return PdfReaderSettings(
+            layout = PdfLayoutMode.fromStoredName(preferences.getString("${prefix}layout", null)),
+            fit = PdfFitMode.fromStoredName(preferences.getString("${prefix}fit", null)),
+            trimMargins = preferences.getBoolean("${prefix}trim", false),
+            color = PdfColorMode.fromStoredName(preferences.getString("${prefix}color", null)),
+            pageGapDp = preferences.getInt("${prefix}gap", 8).coerceIn(0, 24),
+        )
+    }
+
+    fun savePdfReaderSettings(file: File, settings: PdfReaderSettings) {
+        requireManaged(file)
+        val prefix = "pdf-reader-${file.name}-"
+        preferences.edit {
+            putString("${prefix}layout", settings.layout.name)
+            putString("${prefix}fit", settings.fit.name)
+            putBoolean("${prefix}trim", settings.trimMargins)
+            putString("${prefix}color", settings.color.name)
+            putInt("${prefix}gap", settings.pageGapDp.coerceIn(0, 24))
+        }
+    }
+
+    fun pdfBookmarks(file: File): Set<Int> {
+        requireManaged(file)
+        return preferences.getStringSet("pdf-bookmarks-${file.name}", emptySet())
+            ?.mapNotNull(String::toIntOrNull)
+            ?.toSet()
+            .orEmpty()
+    }
+
+    fun togglePdfBookmark(file: File, pageIndex: Int): Set<Int> {
+        requireManaged(file)
+        val key = "pdf-bookmarks-${file.name}"
+        val updated = pdfBookmarks(file).toMutableSet().apply {
+            if (!add(pageIndex.coerceAtLeast(0))) remove(pageIndex)
+        }
+        preferences.edit { putStringSet(key, updated.map(Int::toString).toSet()) }
+        return updated
+    }
+
+    fun savePdfBookmarks(file: File, bookmarks: Set<Int>) {
+        requireManaged(file)
+        preferences.edit {
+            putStringSet("pdf-bookmarks-${file.name}", bookmarks.filter { it >= 0 }.map(Int::toString).toSet())
+        }
     }
 
     fun readerPreferences(file: File): EpubPreferences {

@@ -50,9 +50,12 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     private var libraryJob: Job? = null
     private var openingJob: Job? = null
     private var session: EpubSession? = null
+    private var pdfSession: PdfDocumentSession? = null
     private val tocIndexCache = EpubTocIndexCache<Link>(viewModelScope, Dispatchers.Default)
     private val sessionLock = Any()
     private var closed = false
+
+    private val hasOpenBook: Boolean get() = session != null || pdfSession != null
 
     fun refreshLibrary() {
         if (libraryJob?.isActive == true) return
@@ -73,21 +76,25 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun resume() {
-        if (session != null || openingJob?.isActive == true) return
+        if (hasOpenBook || openingJob?.isActive == true) return
         launchOpen { store.latestFile() ?: throw IOException("No managed EPUB to resume") }
     }
 
     fun openBook(file: File) {
-        if (session != null || openingJob?.isActive == true) return
+        if (hasOpenBook || openingJob?.isActive == true) return
         launchOpen {
             store.importedBooks().firstOrNull { it.file == file }?.file
                 ?: throw IOException("No managed EPUB selected")
         }
     }
 
-    suspend fun metadataJson(file: File): String = withContext(Dispatchers.IO) {
-        store.readMetadataJson(file) ?: engine.readMetadataJson(file).also { metadata ->
-            store.saveMetadataJson(file, metadata)
+    suspend fun metadataJson(file: File): String? = withContext(Dispatchers.IO) {
+        if (EbookFormat.fromFile(file) == EbookFormat.PDF) {
+            null
+        } else {
+            store.readMetadataJson(file) ?: engine.readMetadataJson(file).also { metadata ->
+                store.saveMetadataJson(file, metadata)
+            }
         }
     }
 
@@ -113,16 +120,34 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     fun removeBook(file: File) = removeCopies { store.removeImportedBook(file) }
 
     fun import(uri: Uri) {
-        if (openingJob?.isActive == true || session != null) return
+        if (openingJob?.isActive == true || hasOpenBook) return
         launchOpen(newImport = true) {
             val resolver = getApplication<Application>().contentResolver
-            val size = resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use {
-                if (it.moveToFirst() && !it.isNull(0)) it.getLong(0).takeIf { size -> size > 0 } else null
-            }
+            val (size, displayName) = resolver.query(
+                uri,
+                arrayOf(OpenableColumns.SIZE, OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val documentSize = if (cursor.isNull(0)) null else cursor.getLong(0).takeIf { it > 0 }
+                    documentSize to cursor.getString(1)
+                } else {
+                    null to null
+                }
+            } ?: (null to null)
+            val format = EbookFormat.fromFileName(displayName)
+                ?: when (resolver.getType(uri)) {
+                    EbookFormat.EPUB.mimeType -> EbookFormat.EPUB
+                    EbookFormat.PDF.mimeType -> EbookFormat.PDF
+                    else -> throw IOException("Unsupported ebook format")
+                }
             var lastUpdate = 0L
-            importer.import(
+            val file = importer.import(
                 expectedSize = size,
-                openInput = { resolver.openInputStream(uri) ?: throw IOException("Cannot open selected EPUB") },
+                openInput = { resolver.openInputStream(uri) ?: throw IOException("Cannot open selected ebook") },
+                fileExtension = format.extension,
                 onProgress = { bytes ->
                     val now = System.nanoTime()
                     if (lastUpdate == 0L || now - lastUpdate >= 100_000_000L) {
@@ -131,6 +156,10 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
                     }
                 },
             )
+            if (format == EbookFormat.PDF) {
+                displayName?.substringBeforeLast('.')?.takeIf(String::isNotBlank)?.let { store.saveBookTitle(file, it) }
+            }
+            file
         }
     }
 
@@ -147,7 +176,7 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     }
 
     fun removeFolderSource(uri: String) {
-        if (openingJob?.isActive == true || session != null) return
+        if (openingJob?.isActive == true || hasOpenBook) return
         mutableState.value = State.UpdatingFolders
         openingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -181,7 +210,7 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     }
 
     private fun launchFolderScan(resolveSources: suspend () -> List<EpubStore.FolderSource>) {
-        if (openingJob?.isActive == true || session != null) return
+        if (openingJob?.isActive == true || hasOpenBook) return
         mutableState.value = State.Scanning()
         openingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -218,39 +247,61 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
         mutableState.value = State.Opening
         openingJob = viewModelScope.launch(Dispatchers.IO) {
             var file: File? = null
-            var opened: EpubSession? = null
+            var openedEpub: EpubSession? = null
+            var openedPdf: PdfDocumentSession? = null
             var transferred = false
             try {
                 file = getFile()
                 mutableState.value = State.Opening
-                opened = engine.open(file)
-                xLogI("EPUB performance: ${opened.openMetrics}")
                 val context = currentCoroutineContext()
-                synchronized(sessionLock) {
-                    context.ensureActive()
-                    if (closed) throw CancellationException()
-                    store.markOpened(
-                        file,
-                        title = opened.publication.metadata.title,
-                        authors = opened.publication.metadata.authors.joinToString(", ") { it.name },
-                        chapterCount = opened.publication.readingOrder.size,
-                    )
-                    runCatching {
-                        store.saveMetadataJson(file, opened.publication.metadata.toJSON().toString())
-                    }.onFailure { xLogE("Unable to cache EPUB metadata", it) }
-                    session = opened
-                    mutableState.value = State.Ready(file, opened)
-                    transferred = true
+                when (EbookFormat.fromFile(file)) {
+                    EbookFormat.EPUB -> {
+                        val epub = engine.open(file).also { openedEpub = it }
+                        xLogI("EPUB performance: ${epub.openMetrics}")
+                        synchronized(sessionLock) {
+                            context.ensureActive()
+                            if (closed) throw CancellationException()
+                            store.markOpened(
+                                file,
+                                title = epub.publication.metadata.title,
+                                authors = epub.publication.metadata.authors.joinToString(", ") { it.name },
+                                chapterCount = epub.publication.readingOrder.size,
+                            )
+                            runCatching {
+                                store.saveMetadataJson(file, epub.publication.metadata.toJSON().toString())
+                            }.onFailure { xLogE("Unable to cache EPUB metadata", it) }
+                            session = epub
+                            mutableState.value = State.Ready(file, epub)
+                            transferred = true
+                        }
+                    }
+                    EbookFormat.PDF -> {
+                        val pdf = PdfDocumentSession.open(file).also { openedPdf = it }
+                        if (pdf.pageCount <= 0) throw IOException("PDF has no readable pages")
+                        val initialPage = store.pdfPage(file).coerceIn(0, pdf.pageCount - 1)
+                        synchronized(sessionLock) {
+                            context.ensureActive()
+                            if (closed) throw CancellationException()
+                            val title = store.bookTitle(file) ?: file.nameWithoutExtension
+                            store.markOpened(file, title = title, chapterCount = pdf.pageCount)
+                            store.savePdfPage(file, initialPage)
+                            pdfSession = pdf
+                            mutableState.value = State.PdfReady(file, title, pdf, initialPage)
+                            transferred = true
+                        }
+                        xLogI("PDF performance: opened pages=${pdf.pageCount}")
+                    }
                 }
             } catch (error: CancellationException) {
                 mutableState.value = State.Idle
                 throw error
             } catch (error: Exception) {
-                xLogE("Unable to open EPUB", error)
+                xLogE("Unable to open ebook", error)
                 mutableState.value = State.Failed(error is InsufficientEpubSpace)
             } finally {
                 if (!transferred) {
-                    opened?.close()
+                    openedEpub?.close()
+                    openedPdf?.close()
                     // Only an unsuccessful NEW import is disposable, never the previous saved book.
                     if (newImport && file != null) file.delete()
                 }
@@ -263,9 +314,23 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
             session?.let(tocIndexCache::clear)
             session?.close()
             session = null
+            pdfSession?.close()
+            pdfSession = null
         }
         mutableState.value = State.Idle
     }
+
+    fun savePdfPage(file: File, pageIndex: Int) = store.savePdfPage(file, pageIndex)
+
+    fun pdfReaderSettings(file: File): PdfReaderSettings = store.pdfReaderSettings(file)
+
+    fun savePdfReaderSettings(file: File, settings: PdfReaderSettings) = store.savePdfReaderSettings(file, settings)
+
+    fun pdfBookmarks(file: File): Set<Int> = store.pdfBookmarks(file)
+
+    fun togglePdfBookmark(file: File, pageIndex: Int): Set<Int> = store.togglePdfBookmark(file, pageIndex)
+
+    fun savePdfBookmarks(file: File, bookmarks: Set<Int>) = store.savePdfBookmarks(file, bookmarks)
 
     suspend fun tocIndex(state: State.Ready): EpubTocIndex<Link> =
         tocIndexCache.get(state.session) {
@@ -284,7 +349,7 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     fun removeImportedCopies() = removeCopies { store.clearImportedCopies() }
 
     private fun removeCopies(remove: () -> Unit) {
-        if (session != null || openingJob?.isActive == true) return
+        if (hasOpenBook || openingJob?.isActive == true) return
         mutableState.value = State.Removing
         openingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -320,6 +385,8 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
             closed = true
             session?.close()
             session = null
+            pdfSession?.close()
+            pdfSession = null
         }
     }
 
@@ -340,6 +407,7 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
         ) : State
         data class ScanComplete(val added: Int, val skipped: Int, val failed: Int, val insufficientSpace: Boolean) : State
         data class Ready(val file: File, val session: EpubSession) : State
+        data class PdfReady(val file: File, val title: String, val session: PdfDocumentSession, val initialPage: Int) : State
         data class Failed(val insufficientSpace: Boolean, val removalFailed: Boolean = false) : State
     }
 }

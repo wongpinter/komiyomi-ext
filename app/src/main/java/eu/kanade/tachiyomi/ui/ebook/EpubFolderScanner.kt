@@ -59,7 +59,7 @@ internal class EpubFolderScanner(
                     if (displayName.startsWith('.')) continue
                     if (cursor.getString(mimeColumn) == Document.MIME_TYPE_DIR) {
                         pending.add(childId)
-                    } else if (displayName.endsWith(".epub", ignoreCase = true)) {
+                    } else if (EbookFormat.fromFileName(displayName) != null) {
                         documents.add(DocumentsContract.buildDocumentUriUsingTree(treeUri, childId))
                     }
                 }
@@ -109,7 +109,7 @@ internal class EpubFolderScanner(
                                 pending.add(DirectoryEntry(childId, "${directory.category}/$displayName"))
                                 continue
                             }
-                            if (!displayName.endsWith(".epub", ignoreCase = true)) continue
+                            val format = EbookFormat.fromFileName(displayName) ?: continue
 
                             val documentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                             val size = sizeColumn.takeIf { it >= 0 && !cursor.isNull(it) }
@@ -126,6 +126,7 @@ internal class EpubFolderScanner(
                                     var lastUpdate = 0L
                                     val file = importer.import(
                                         expectedSize = size,
+                                        fileExtension = format.extension,
                                         openInput = {
                                             resolver.openInputStream(documentUri)
                                                 ?: throw IOException("Cannot read $displayName")
