@@ -45,12 +45,10 @@ This document records the EPUB reader implementation, validation evidence, and k
   Six bundled Google font families are selectable for reflowable books; see [font details](epub-fonts.md).
 - Use trusted DRM-free EPUBs. External hyperlink activation is blocked; remote subresource behavior has not been separately verified, so this does not claim that every remote resource is blocked by the renderer.
 - Each explicit import creates a separate managed copy. There is no duplicate manager yet.
-- Large-file rendering, WebView memory and exact resume behavior still need the full device acceptance run below.
-  Source compilation and unit tests do not prove rendered behavior.
+- The user has confirmed that an approximately 1 GB EPUB was opened on device: initial loading takes time, then reading runs smoothly. This confirms usable post-load reading for that report, but no load-time or WebView-memory measurements are recorded.
 - Process termination during import can leave a staging file. Remove imported copies
   also removes such abandoned files; an interrupted import is never published for resume.
-- Rendering/gesture performance for very large single XHTML resources is unproven.
-  Do not describe 1 GB support as validated before the named fixture/device run.
+- Rendering/gesture performance for a very large single XHTML resource, exact resume behavior, and measured renderer memory remain unverified. Treat the 1 GB result as a device observation, not a quantified benchmark.
 
 ## Verified in this development slice (2026-10-17)
 
@@ -88,7 +86,7 @@ These earlier checks establish build/storage behavior, not full large-book readi
 Fixture: `Nurseholic_Collected_Works.epub` on `gdrive-hasan`.
 Keep the private book outside git. Target device/RAM/Android/WebView version and
 DRM/layout characteristics still need to be recorded.
-No full fixture download or device benchmark has been performed. Authenticated, bounded
+No formal device benchmark or renderer-process memory profile has been recorded. Authenticated, bounded
 remote ZIP/package reads are a separate metadata-only check (see below); they do not test rendering.
 
 1. Build/install debug APK; confirm normal manga reading/settings still behave as before.

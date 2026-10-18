@@ -23,7 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.luminance
@@ -65,6 +67,7 @@ class EbookActivity : BaseActivity() {
     private lateinit var model: EpubViewModel
     private lateinit var container: FragmentContainerView
     private lateinit var libraryHost: ComposeView
+    private lateinit var pdfReaderHost: ComposeView
     private lateinit var readerTopHost: ComposeView
     private lateinit var readerBottomHost: ComposeView
     private lateinit var readerLoadingHost: FrameLayout
@@ -82,6 +85,8 @@ class EbookActivity : BaseActivity() {
     private var readerTheme by mutableStateOf(EpubReaderTheme.SEPIA)
     private var appColorScheme: ColorScheme? = null
     private var currentProgress by mutableFloatStateOf(0f)
+    private var currentPdfPage by mutableIntStateOf(0)
+    private var pdfHudVisible by mutableStateOf(false)
     private var bookDetailsDialog: BottomSheetDialog? = null
     private var bookDetailsLoadJob: Job? = null
     private var bookDetailsUi by mutableStateOf<BookDetailsUi?>(null)
@@ -184,6 +189,42 @@ class EbookActivity : BaseActivity() {
         }
         root.addView(libraryHost, FrameLayout.LayoutParams(-1, -1))
 
+        pdfReaderHost = ComposeView(this).apply {
+            visibility = View.GONE
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setEpubContent {
+                val state by model.state.collectAsState()
+                val book = state as? EpubViewModel.State.PdfReady
+                if (book != null) {
+                    key(book.file, book.session) {
+                        PdfReaderScreen(
+                            file = book.file,
+                            title = book.title,
+                            session = book.session,
+                            initialPage = book.initialPage,
+                            initialSettings = model.pdfReaderSettings(book.file),
+                            initialBookmarks = model.pdfBookmarks(book.file),
+                            onBack = {
+                                model.savePdfPage(book.file, currentPdfPage)
+                                returnToLibrary()
+                            },
+                            onPageChanged = { page ->
+                                currentPdfPage = page
+                                model.savePdfPage(book.file, page)
+                            },
+                            onSettingsChanged = { settings -> model.savePdfReaderSettings(book.file, settings) },
+                            onBookmarksChanged = { bookmarks -> model.savePdfBookmarks(book.file, bookmarks) },
+                            onHudVisibilityChanged = { visible ->
+                                pdfHudVisible = visible
+                                updateReaderLoadingOverlay()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        root.addView(pdfReaderHost, FrameLayout.LayoutParams(-1, -1))
+
         readerTopHost = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setEpubContent {
@@ -255,7 +296,7 @@ class EbookActivity : BaseActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (ready != null) returnToLibrary() else finish()
+                    if (ready != null || model.state.value is EpubViewModel.State.PdfReady) returnToLibrary() else finish()
                 }
             },
         )
@@ -275,7 +316,7 @@ class EbookActivity : BaseActivity() {
                 SideEffect {
                     if (appColorScheme != colorScheme) {
                         appColorScheme = colorScheme
-                        updateSystemBars(showSystemBars = ready == null || controlsVisible || !readerReadyForInteraction)
+                        updateSystemBars(showSystemBars = shouldShowSystemBars())
                     }
                 }
                 content()
@@ -285,7 +326,7 @@ class EbookActivity : BaseActivity() {
 
     private fun launchBookPicker() {
         pickingBook = true
-        selectBook.launch(arrayOf("application/epub+zip", "application/octet-stream", "application/zip"))
+        selectBook.launch(arrayOf("application/epub+zip", "application/pdf", "application/octet-stream", "application/zip"))
     }
 
     private fun launchFolderPicker() {
@@ -447,6 +488,7 @@ class EbookActivity : BaseActivity() {
         val state = ready
         val reader = navigator
         if (state != null && reader != null) model.saveLocation(state.file, reader.currentLocator.value)
+        (model.state.value as? EpubViewModel.State.PdfReady)?.let { model.savePdfPage(it.file, currentPdfPage) }
         contentsSheet?.dismiss()
         contentsSheet = null
         locationJob?.cancel()
@@ -576,12 +618,17 @@ class EbookActivity : BaseActivity() {
     }
 
     private fun render(state: EpubViewModel.State) {
-        val inReader = state is EpubViewModel.State.Ready
-        container.visibility = if (inReader) View.VISIBLE else View.GONE
+        val inEpubReader = state is EpubViewModel.State.Ready
+        val inPdfReader = state is EpubViewModel.State.PdfReady
+        val inReader = inEpubReader || inPdfReader
+        if (!inPdfReader) pdfHudVisible = false
+        container.visibility = if (inEpubReader) View.VISIBLE else View.GONE
         libraryHost.visibility = if (inReader) View.GONE else View.VISIBLE
-        readerTopHost.visibility = if (inReader && controlsVisible) View.VISIBLE else View.GONE
-        readerBottomHost.visibility = if (inReader && controlsVisible) View.VISIBLE else View.GONE
+        pdfReaderHost.visibility = if (inPdfReader) View.VISIBLE else View.GONE
+        readerTopHost.visibility = if (inEpubReader && controlsVisible) View.VISIBLE else View.GONE
+        readerBottomHost.visibility = if (inEpubReader && controlsVisible) View.VISIBLE else View.GONE
         if (state is EpubViewModel.State.Ready && navigator == null) attachReader(state)
+        if (state is EpubViewModel.State.PdfReady) currentPdfPage = state.initialPage
         updateReaderLoadingOverlay()
     }
 
@@ -899,13 +946,20 @@ class EbookActivity : BaseActivity() {
         if (!::readerLoadingHost.isInitialized) return
         val loading = ready != null && !readerReadyForInteraction
         readerLoadingHost.visibility = if (loading) View.VISIBLE else View.GONE
-        updateSystemBars(showSystemBars = ready == null || controlsVisible || loading)
+        updateSystemBars(showSystemBars = shouldShowSystemBars())
+    }
+
+    private fun shouldShowSystemBars(): Boolean = when (model.state.value) {
+        is EpubViewModel.State.PdfReady -> pdfHudVisible
+        is EpubViewModel.State.Ready -> controlsVisible || !readerReadyForInteraction
+        else -> true
     }
 
     private fun updateSystemBars(showSystemBars: Boolean) {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
-        val surface = if (ready == null || controlsVisible) appColorScheme?.surface else readerTheme.colorScheme.surface
+        val pdfHud = model.state.value is EpubViewModel.State.PdfReady && pdfHudVisible
+        val surface = if (ready == null || controlsVisible || pdfHud) appColorScheme?.surface else readerTheme.colorScheme.surface
         WindowInsetsControllerCompat(window, window.decorView).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             surface?.let {
@@ -926,6 +980,7 @@ class EbookActivity : BaseActivity() {
         ready?.let { state ->
             navigator?.currentLocator?.value?.let { model.saveLocation(state.file, it) }
         }
+        (model.state.value as? EpubViewModel.State.PdfReady)?.let { model.savePdfPage(it.file, currentPdfPage) }
         super.onStop()
     }
 

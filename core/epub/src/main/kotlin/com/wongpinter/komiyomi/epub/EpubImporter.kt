@@ -18,13 +18,15 @@ class EpubImporter(
         expectedSize: Long?,
         openInput: () -> InputStream,
         onProgress: (Long) -> Unit = {},
+        fileExtension: String = "epub",
     ): File {
+        require(fileExtension in SUPPORTED_EXTENSIONS) { "Unsupported ebook format" }
         check(directory.isDirectory || directory.mkdirs())
         val required = expectedSize?.takeIf { it > 0 } ?: 0
         if (availableSpace() - RESERVE_BYTES < required) throw InsufficientEpubSpace()
         val id = UUID.randomUUID().toString()
         val temporary = File(directory, "$id.part")
-        val destination = File(directory, "$id.epub")
+        val destination = File(directory, "$id.$fileExtension")
         try {
             var copied = 0L
             var lastSpaceCheck = 0L
@@ -60,6 +62,7 @@ class EpubImporter(
     }
 
     private companion object {
+        val SUPPORTED_EXTENSIONS = setOf("epub", "pdf")
         const val RESERVE_BYTES = 16L * 1024 * 1024
         const val SPACE_CHECK_INTERVAL = 4L * 1024 * 1024
     }
