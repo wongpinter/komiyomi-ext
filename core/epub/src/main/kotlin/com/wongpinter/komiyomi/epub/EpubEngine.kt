@@ -14,9 +14,13 @@ import org.readium.r2.shared.publication.services.PositionsService
 import org.readium.r2.shared.publication.services.isRestricted
 import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.positionsServiceFactory
+import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.http.DefaultHttpClient
+import org.readium.r2.shared.util.http.HttpError
+import org.readium.r2.shared.util.http.HttpRequest
+import org.readium.r2.shared.util.http.HttpTry
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.epub.EpubParser
 import java.io.Closeable
@@ -28,7 +32,12 @@ import java.io.IOException
  * Only local, managed files are accepted. No DRM unlocking or eager chapter-body traversal.
  */
 class EpubEngine(context: Context) {
-    private val httpClient = DefaultHttpClient()
+    private val httpClient = DefaultHttpClient(
+        callback = object : DefaultHttpClient.Callback {
+            override suspend fun onStartRequest(request: HttpRequest): HttpTry<HttpRequest> =
+                Try.failure(HttpError.IO(IOException("Remote EPUB resources are disabled")))
+        },
+    )
     private val assets = AssetRetriever(context.applicationContext.contentResolver, httpClient)
     suspend fun open(file: File): EpubSession {
         var prepared: EpubSession? = null

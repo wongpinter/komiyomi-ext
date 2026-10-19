@@ -53,6 +53,16 @@ class SyncPreferences(
         return syncService().get() != SyncManager.SyncService.NONE.value
     }
 
+    // KMK -->
+    fun disableGoogleDriveSyncIfSelected(): Boolean {
+        val service = syncService()
+        if (service.get() != SyncManager.SyncService.GOOGLE_DRIVE.value) return false
+
+        service.set(SyncManager.SyncService.NONE.value)
+        return true
+    }
+    // KMK <--
+
     fun getSyncSettings(): SyncSettings {
         return SyncSettings(
             libraryEntries = preferenceStore.getBoolean("sync_library_entries", true).get(),

@@ -26,6 +26,7 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.coroutines.flow.update
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.LazyColumnWithAction
 import tachiyomi.presentation.core.components.SectionCard
@@ -91,6 +92,14 @@ class CreateBackupScreen : Screen() {
                         Options(BackupOptions.libraryOptions, state, model)
                     }
                 }
+
+                // KMK -->
+                item {
+                    SectionCard(KMR.strings.ebook_backup_section) {
+                        Options(BackupOptions.ebookOptions, state, model)
+                    }
+                }
+                // KMK <--
 
                 item {
                     SectionCard(MR.strings.label_settings) {

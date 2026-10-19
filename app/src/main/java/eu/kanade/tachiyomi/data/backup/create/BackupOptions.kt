@@ -21,6 +21,10 @@ data class BackupOptions(
     val customInfo: Boolean = true,
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // KMK -->
+    val ebookLibrary: Boolean = true,
+    val ebookFiles: Boolean = false,
+    // KMK <--
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -38,10 +42,14 @@ data class BackupOptions(
         customInfo,
         savedSearchesFeeds,
         // SY <--
+        // KMK -->
+        ebookLibrary,
+        ebookFiles,
+        // KMK <--
     )
 
     fun canCreate() =
-        libraryEntries || categories || appSettings || extensionStores || sourceSettings || savedSearchesFeeds
+        libraryEntries || categories || appSettings || extensionStores || sourceSettings || savedSearchesFeeds || ebookLibrary
 
     companion object {
         val libraryOptions = persistentListOf(
@@ -96,6 +104,22 @@ data class BackupOptions(
             // SY <--
         )
 
+        // KMK -->
+        val ebookOptions = persistentListOf(
+            Entry(
+                label = KMR.strings.ebook_backup_library,
+                getter = BackupOptions::ebookLibrary,
+                setter = { options, enabled -> options.copy(ebookLibrary = enabled) },
+            ),
+            Entry(
+                label = KMR.strings.ebook_backup_files,
+                getter = BackupOptions::ebookFiles,
+                setter = { options, enabled -> options.copy(ebookFiles = enabled) },
+                enabled = { it.ebookLibrary },
+            ),
+        )
+        // KMK <--
+
         val settingsOptions = persistentListOf(
             Entry(
                 label = MR.strings.app_settings,
@@ -133,8 +157,12 @@ data class BackupOptions(
             privateSettings = array[9],
             // SY -->
             customInfo = array[10],
-            savedSearchesFeeds = array[11],
+            savedSearchesFeeds = array.getOrElse(11) { true },
             // SY <--
+            // KMK -->
+            ebookLibrary = array.getOrElse(12) { true },
+            ebookFiles = array.getOrElse(13) { false },
+            // KMK <--
         )
     }
 

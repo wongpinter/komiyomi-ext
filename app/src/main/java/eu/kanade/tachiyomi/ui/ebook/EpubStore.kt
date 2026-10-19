@@ -9,11 +9,18 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Base64
 import androidx.core.content.edit
+import eu.kanade.tachiyomi.data.backup.models.BackupEbook
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookFolderOwner
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookFolderSource
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookLibrary
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookShelfSettings
 import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.shared.publication.Locator
 import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.security.MessageDigest
 
 /** Ebook shelf state, kept separate from manga preferences and database. */
@@ -135,6 +142,19 @@ internal class EpubStore(context: Context) {
             .filter { it.isFile && EbookFormat.fromFileName(it.name) != null && it.canonicalFile.parentFile == directory.canonicalFile }
             .map { file ->
                 val format = EbookFormat.fromFile(file)
+                val metadataSummaryKey = "metadata-summary-read-${file.name}"
+                val needsMetadataSummary = format == EbookFormat.EPUB && !preferences.getBoolean(metadataSummaryKey, false)
+                val packageSummary = if (needsMetadataSummary) EpubCoverExtractor.readPackageSummary(file) else null
+                if (needsMetadataSummary) {
+                    preferences.edit {
+                        putBoolean(metadataSummaryKey, true)
+                        packageSummary?.title?.takeIf(String::isNotBlank)?.let {
+                            putString("title-${file.name}", it.take(512))
+                        }
+                        packageSummary?.authors?.let { putString("authors-${file.name}", it.take(512)) }
+                        packageSummary?.readingOrderCount?.let { putInt("chapters-${file.name}", it) }
+                    }
+                }
                 val pdfPage = preferences.getInt("pdf-page-${file.name}", -1)
                 val savedPageCount = preferences.getInt("chapters-${file.name}", -1).takeIf { it > 0 }
                 val progress = if (format == EbookFormat.PDF) {
@@ -147,8 +167,8 @@ internal class EpubStore(context: Context) {
                     locator(file)?.locations?.totalProgression?.toFloat()?.coerceIn(0f, 1f)
                 }
                 val cachedChapterCount = preferences.getInt("chapters-${file.name}", -1).takeIf { it >= 0 }
-                val extractedChapterCount = if (format == EbookFormat.EPUB) {
-                    EpubCoverExtractor.readingOrderCount(file)
+                val extractedChapterCount = if (format == EbookFormat.EPUB && cachedChapterCount == null) {
+                    if (needsMetadataSummary) packageSummary?.readingOrderCount else EpubCoverExtractor.readingOrderCount(file)
                 } else {
                     null
                 }
@@ -157,7 +177,7 @@ internal class EpubStore(context: Context) {
                 } ?: 0
                 ImportedEpub(
                     file = file,
-                    title = preferences.getString("title-${file.name}", null) ?: file.nameWithoutExtension,
+                    title = preferences.getString("title-${file.name}", null)?.takeIf(String::isNotBlank) ?: file.nameWithoutExtension,
                     authors = preferences.getString("authors-${file.name}", null).orEmpty(),
                     lastOpened = preferences.getString("opened-${file.name}", null)?.toLongOrNull() ?: 0L,
                     size = file.length(),
@@ -169,6 +189,207 @@ internal class EpubStore(context: Context) {
                 )
             }
             .sortedWith(compareByDescending<ImportedEpub> { it.lastOpened }.thenBy { it.title })
+    }
+
+    fun backupLibrary(includeFiles: Boolean): BackupEbookLibrary {
+        val books = importedBooks().map { imported ->
+            val file = imported.file
+            val ownerKeys = preferences.all.keys.filter { key ->
+                key.startsWith("source-owners-") && preferences.getString(sourceFileKeyForOwners(key), null) == file.name
+            }
+            val folderOwners = ownerKeys.flatMap(::folderImportOwners)
+                .distinctBy { it.folderUri }
+                .map { BackupEbookFolderOwner(it.folderUri, it.category) }
+            val pdfSettings = if (imported.format == EbookFormat.PDF) pdfReaderSettings(file) else null
+            BackupEbook(
+                fileName = file.name,
+                format = file.extension.lowercase(),
+                title = imported.title,
+                authors = imported.authors,
+                sourceUri = preferences.getString("source-uri-${file.name}", null),
+                folderOwners = folderOwners,
+                size = imported.size,
+                lastOpened = imported.lastOpened,
+                chapterCount = imported.chapterCount,
+                category = imported.category,
+                epubLocatorJson = if (imported.format == EbookFormat.EPUB) locator(file)?.toJSON()?.toString() else null,
+                epubPreferencesJson = if (imported.format == EbookFormat.EPUB) preferences.getString("preferences-${file.name}", null) else null,
+                epubTheme = preferences.getString("theme-${file.name}", null),
+                epubBookmarkJson = preferences.getString("bookmark-${file.name}", null),
+                pdfPage = if (imported.format == EbookFormat.PDF) pdfPage(file) else 0,
+                pdfLayout = pdfSettings?.layout?.name,
+                pdfFit = pdfSettings?.fit?.name,
+                pdfTrimMargins = pdfSettings?.trimMargins ?: false,
+                pdfColor = pdfSettings?.color?.name,
+                pdfPageGapDp = pdfSettings?.pageGapDp ?: 8,
+                pdfBookmarks = if (imported.format == EbookFormat.PDF) pdfBookmarks(file).sorted() else emptyList(),
+                bookEntry = if (includeFiles) "ebooks/books/${file.name}" else null,
+                coverEntry = cachedCover(file)?.let { "ebooks/covers/${file.name}" },
+                metadataEntry = metadataFile(file).takeIf(File::isFile)?.let { "ebooks/metadata/${file.name}.json" },
+            )
+        }
+        val settings = shelfSettings()
+        return BackupEbookLibrary(
+            books = books,
+            folderSources = folderSources().map { BackupEbookFolderSource(it.uri, it.name) },
+            shelfSettings = BackupEbookShelfSettings(
+                query = settings.query,
+                filter = settings.filter,
+                sort = settings.sort,
+                descending = settings.descending,
+                layout = settings.layout,
+                coverSize = settings.coverSize,
+            ),
+        )
+    }
+
+    fun backupAttachment(book: BackupEbook, entryName: String): File? {
+        val file = managedFile(book.fileName) ?: return null
+        val expectedEntry = when (entryName) {
+            book.bookEntry -> file
+            book.coverEntry -> cachedCover(file)
+            book.metadataEntry -> metadataFile(file).takeIf(File::isFile)
+            else -> null
+        }
+        return expectedEntry?.takeIf(File::isFile)
+    }
+
+    fun restoreBackupBook(book: BackupEbook, file: File) {
+        requireManaged(file)
+        val validatedLocator = book.epubLocatorJson?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
+        val validatedBookmark = book.epubBookmarkJson?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
+        val validatedPreferences = book.epubPreferencesJson?.let {
+            runCatching { json.decodeFromString<EpubPreferences>(it) }.getOrNull()
+        }
+        preferences.edit {
+            putString("title-${file.name}", book.title.take(512))
+            putString("authors-${file.name}", book.authors.take(512))
+            putString("opened-${file.name}", book.lastOpened.toString())
+            putInt("chapters-${file.name}", book.chapterCount.coerceAtLeast(0))
+            if (book.format == "epub") putBoolean("metadata-summary-read-${file.name}", true)
+            book.category?.let { putString("category-${file.name}", it) }
+            validatedLocator?.let { putString("location-${file.name}", it.toJSON().toString()) }
+            validatedBookmark?.let { putString("bookmark-${file.name}", it.toJSON().toString()) }
+            book.epubTheme?.takeIf { it in setOf("LIGHT", "SEPIA", "DARK") }?.let { putString("theme-${file.name}", it) }
+            if (book.format == "pdf") {
+                putInt("pdf-page-${file.name}", book.pdfPage.coerceAtLeast(0))
+                val prefix = "pdf-reader-${file.name}-"
+                putString("${prefix}layout", PdfLayoutMode.fromStoredName(book.pdfLayout).name)
+                putString("${prefix}fit", PdfFitMode.fromStoredName(book.pdfFit).name)
+                putBoolean("${prefix}trim", book.pdfTrimMargins)
+                putString("${prefix}color", PdfColorMode.fromStoredName(book.pdfColor).name)
+                putInt("${prefix}gap", book.pdfPageGapDp.coerceIn(0, 24))
+                putStringSet("pdf-bookmarks-${file.name}", book.pdfBookmarks.filter { it >= 0 }.map(Int::toString).toSet())
+            }
+            if (preferences.getString("latest", null) == null || book.lastOpened >= latestOpenedAt()) {
+                putString("latest", file.name)
+            }
+        }
+        validatedPreferences?.let { savePreferences(file, EpubFonts.normalize(it)) }
+
+        val sourceUri = book.sourceUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            ?.takeIf { it.scheme == "content" }
+        val owners = book.folderOwners.filter { it.folderUri.startsWith("content://") }
+            .map { FolderImportOwner(it.folderUri, it.category) }
+        preferences.edit {
+            putString(restoredBackupFileKey(book.fileName), file.name)
+            if (sourceUri != null) {
+                val sourceKey = sourceImportKey(sourceUri)
+                putString(sourceKey, file.name)
+                putString("source-uri-${file.name}", sourceUri.toString())
+                if (owners.isNotEmpty()) putString(sourceOwnersKey(sourceKey), encodeFolderImportOwners(owners))
+            }
+        }
+    }
+
+    fun existingFileForBackup(book: BackupEbook): File? {
+        managedFile(preferences.getString(restoredBackupFileKey(book.fileName), null))?.let { return it }
+        managedFile(book.fileName)?.let { return it }
+        val sourceUri = book.sourceUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            ?.takeIf { it.scheme == "content" }
+        return sourceUri?.let(::importedFileForSource)
+    }
+
+    fun restoreFolderSources(sources: List<BackupEbookFolderSource>) {
+        saveFolderSources(sources.filter { it.uri.startsWith("content://") }.map { FolderSource(it.uri, it.name) })
+    }
+
+    fun restoreShelfSettings(settings: BackupEbookShelfSettings) {
+        saveShelfSettings(
+            ShelfSettings(
+                query = settings.query.take(256),
+                filter = settings.filter.take(32),
+                sort = settings.sort.take(32),
+                descending = settings.descending,
+                layout = settings.layout.take(32),
+                coverSize = settings.coverSize,
+            ),
+        )
+    }
+
+    fun restoreCover(file: File, input: InputStream) {
+        requireManaged(file)
+        val target = File(File(directory, "covers"), coverName(file))
+        writeCache(target, input, MAX_COVER_CACHE_BYTES)
+    }
+
+    fun restoreMetadata(file: File, input: InputStream) {
+        requireManaged(file)
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > MAX_METADATA_CACHE_BYTES) throw java.io.IOException("EPUB metadata cache is too large")
+            output.write(buffer, 0, count)
+        }
+        val metadataJson = output.toByteArray().toString(Charsets.UTF_8)
+        if (runCatching { JSONObject(metadataJson) }.isFailure) throw java.io.IOException("Invalid EPUB metadata cache")
+        saveMetadataJson(file, metadataJson)
+    }
+
+    private fun writeCache(target: File, input: InputStream, maxBytes: Int) {
+        synchronized(coverLock) {
+            val parent = target.parentFile ?: throw java.io.IOException("Cannot create ebook cache")
+            if (!parent.isDirectory && !parent.mkdirs()) throw java.io.IOException("Cannot create ebook cache")
+            val temporary = File(parent, "${target.name}.part")
+            try {
+                FileOutputStream(temporary).use { output ->
+                    val buffer = ByteArray(8 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > maxBytes) throw java.io.IOException("Ebook cache is too large")
+                        output.write(buffer, 0, count)
+                    }
+                    output.fd.sync()
+                }
+                if (target.exists() && !target.delete()) throw java.io.IOException("Cannot replace ebook cache")
+                if (!temporary.renameTo(target)) throw java.io.IOException("Cannot save ebook cache")
+            } finally {
+                if (temporary.exists()) temporary.delete()
+            }
+        }
+    }
+
+    private fun latestOpenedAt(): Long = preferences.getString("latest", null)?.let { latest ->
+        preferences.getString("opened-$latest", null)?.toLongOrNull()
+    } ?: 0L
+
+    fun recordFileImport(uri: Uri, file: File, fallbackTitle: String?) {
+        requireManaged(file)
+        preferences.edit {
+            putString(sourceImportKey(uri), file.name)
+            putString("source-uri-${file.name}", uri.toString())
+            fallbackTitle?.substringBeforeLast('.')?.takeIf(String::isNotBlank)?.let {
+                val titleKey = "title-${file.name}"
+                if (!preferences.contains(titleKey)) putString(titleKey, it.take(512))
+            }
+        }
     }
 
     fun importedFileForSource(uri: Uri): File? {
@@ -186,6 +407,7 @@ internal class EpubStore(context: Context) {
         val owners = folderImportOwners(uri).filterNot { it.folderUri == folderUri } + FolderImportOwner(folderUri, category)
         preferences.edit {
             putString(sourceImportKey(uri), file.name)
+            putString("source-uri-${file.name}", uri.toString())
             putString(ownersKey, encodeFolderImportOwners(owners))
             putString("category-${file.name}", category)
             val titleKey = "title-${file.name}"
@@ -361,6 +583,9 @@ internal class EpubStore(context: Context) {
             val sourceKeys = preferences.all
                 .filter { (key, value) -> key.startsWith("source-file-") && value == file.name }
                 .keys
+            val restoredBookKeys = preferences.all
+                .filter { (key, value) -> key.startsWith(RESTORED_BACKUP_FILE_PREFIX) && value == file.name }
+                .keys
             val ownersKeys = sourceKeys.map(::sourceOwnersKey)
             val pdfSettingsKeys = preferences.all.keys.filter {
                 it.startsWith("pdf-reader-${file.name}-") || it == "pdf-bookmarks-${file.name}"
@@ -369,15 +594,24 @@ internal class EpubStore(context: Context) {
             cachedCover(file)?.let { if (!it.delete()) throw java.io.IOException("Cannot remove EPUB cover thumbnail") }
             if (metadata.exists() && !metadata.delete()) throw java.io.IOException("Cannot remove EPUB metadata cache")
             preferences.edit {
-                listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme", "chapters", "pdf-page").forEach { remove("$it-${file.name}") }
+                listOf("title", "authors", "opened", "location", "preferences", "bookmark", "theme", "chapters", "pdf-page", "metadata-summary-read", "source-uri").forEach { remove("$it-${file.name}") }
                 pdfSettingsKeys.forEach { remove(it) }
                 remove("category-${file.name}")
                 sourceKeys.forEach { remove(it) }
+                restoredBookKeys.forEach { remove(it) }
                 ownersKeys.forEach { remove(it) }
                 if (preferences.getString("latest", null) == file.name) remove("latest")
             }
         }
     }
+
+    private companion object {
+        const val MAX_COVER_CACHE_BYTES = 10 * 1024 * 1024
+        const val MAX_METADATA_CACHE_BYTES = 8 * 1024 * 1024
+        const val RESTORED_BACKUP_FILE_PREFIX = "restored-backup-file-"
+    }
+
+    private fun restoredBackupFileKey(fileName: String): String = "$RESTORED_BACKUP_FILE_PREFIX$fileName"
 
     data class ImportedEpub(
         val file: File,

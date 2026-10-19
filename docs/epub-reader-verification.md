@@ -1,12 +1,12 @@
 <!-- KMK -->
-# EPUB reader verification and known limits
+# Ebook reader verification and known limits
 
 This document records the EPUB reader implementation, validation evidence, and known limits. Its shelf, reading positions and preferences remain separate from manga data.
 
 ## Implementation
 
 - `:core:epub` pins Readium 3.2.0 without upgrading compile SDK 36.
-  The engine uses the EPUB-only parser; PDF support is not enabled.
+  The engine uses the EPUB parser; local PDF files use the separate PDFium reader.
   [Index/load optimizations](epub-performance.md) prepare cached positions on IO and
   use coarser synthetic position density for oversized files, without dropping chapters.
 - The renderer, state holder, locator/preferences store and unexported Activity live in
@@ -25,6 +25,9 @@ This document records the EPUB reader implementation, validation evidence, and k
 - Reopening Ebook automatically resumes the last successfully opened copy.
 - Vertical scrolling is the default. Center taps reveal controls; system bars are hidden
   while reading. Basic text-size and optional left-to-right pagination controls are present.
+- Local PDF books support saved page position, continuous/paginated layout, page/width fit,
+  margin trimming, color filters and per-book page bookmarks. PDF device acceptance has not
+  been recorded for this release.
 - Book sections use recycled list rows instead of eagerly generating every spine label.
   Direct middle/last-section jumps support checks on spines with tens of thousands of entries.
 - Latest Readium locator and basic preferences are saved per imported copy, isolated from
@@ -36,16 +39,16 @@ This document records the EPUB reader implementation, validation evidence, and k
   Reopen any copy with its own locator/preferences, or confirm removal of just that copy. Failed opening of an
   older copy never deletes it. No book is parsed just to display the list.
 - Close book returns to the shelf. Remove imported copies requires confirmation,
-  frees only app-managed copies/staging files and clears only EPUB reader state.
+  frees only app-managed copies/staging files and clears only that ebook copy's reader state.
 
 ## Current limits
 
-- The shelf manages imported local EPUBs. Annotations, app-backup integration and user font-file imports are not supported.
-  Per-book margin/line/paragraph/alignment controls are available for reflowable books; see [layout settings](epub-layout-settings.md).
-  Six bundled Google font families are selectable for reflowable books; see [font details](epub-fonts.md).
-- Use trusted DRM-free EPUBs. External hyperlink activation is blocked; remote subresource behavior has not been separately verified, so this does not claim that every remote resource is blocked by the renderer.
+- The shelf manages imported local EPUB and PDF books. Annotations, app-backup integration and user font-file imports are not supported.
+  Per-book margin/line/paragraph/alignment controls and six bundled font families are available for reflowable EPUBs; see [layout settings](epub-layout-settings.md) and [font details](epub-fonts.md).
+- Use trusted DRM-free EPUBs and local PDFs. EPUB external hyperlink activation is blocked, and Readium's HTTP
+  client rejects remote publication-resource requests; local packaged resources remain available.
 - Each explicit import creates a separate managed copy. There is no duplicate manager yet.
-- The user has confirmed that an approximately 1 GB EPUB was opened on device: initial loading takes time, then reading runs smoothly. This confirms usable post-load reading for that report, but no load-time or WebView-memory measurements are recorded.
+- User-reported device smoke (2026-10-19): an approximately 1 GB EPUB opened without crashing and was easy to navigate. Device details, import/open timings and app/renderer memory were not recorded; treat this as beta stability and usability evidence, not a quantified performance benchmark.
 - Process termination during import can leave a staging file. Remove imported copies
   also removes such abandoned files; an interrupted import is never published for resume.
 - Rendering/gesture performance for a very large single XHTML resource, exact resume behavior, and measured renderer memory remain unverified. Treat the 1 GB result as a device observation, not a quantified benchmark.

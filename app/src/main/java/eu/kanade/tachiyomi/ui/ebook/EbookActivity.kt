@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -51,8 +52,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
-import org.readium.r2.navigator.input.InputListener
-import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.preferences.ReadingProgression
 import org.readium.r2.shared.publication.Layout
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -93,6 +92,11 @@ class EbookActivity : BaseActivity() {
     private var pickingBook = false
     private var chapterPull: ChapterPull? = null
     private var chapterTurnFromHref: String? = null
+    // KMK -->
+    private var readerTapStart: ReaderTapStart? = null
+
+    private data class ReaderTapStart(val x: Float, val y: Float, val downTime: Long)
+    // KMK <--
 
     private data class ChapterPull(
         val reader: EpubNavigatorFragment,
@@ -120,7 +124,12 @@ class EbookActivity : BaseActivity() {
 
     private val selectBook = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         pickingBook = false
-        if (uri != null) model.import(uri)
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }.onFailure { error -> xLogE("Unable to retain selected ebook access for path-only backups", error) }
+            model.import(uri)
+        }
     }
 
     private val selectFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -296,7 +305,13 @@ class EbookActivity : BaseActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (ready != null || model.state.value is EpubViewModel.State.PdfReady) returnToLibrary() else finish()
+                    when {
+                        // KMK -->
+                        ready != null && !controlsVisible -> updateReaderControls(true)
+                        // KMK <--
+                        ready != null || model.state.value is EpubViewModel.State.PdfReady -> returnToLibrary()
+                        else -> finish()
+                    }
                 }
             },
         )
@@ -686,14 +701,6 @@ class EbookActivity : BaseActivity() {
         val reader = factory.instantiate(classLoader, EpubNavigatorFragment::class.java.name) as EpubNavigatorFragment
         navigator = reader
         supportFragmentManager.beginTransaction().replace(container.id, reader).commitNow()
-        reader.addInputListener(object : InputListener {
-            override fun onTap(event: TapEvent): Boolean {
-                val width = reader.view?.width ?: return false
-                if (event.point.x < width * 0.25f || event.point.x > width * 0.75f) return false
-                updateReaderControls(!controlsVisible)
-                return true
-            }
-        })
         locationJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 reader.currentLocator.collect { locator ->
@@ -721,6 +728,13 @@ class EbookActivity : BaseActivity() {
         val handled = super.dispatchTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // KMK -->
+                readerTapStart = if (isReaderControlTap(event.x, event.y)) {
+                    ReaderTapStart(event.x, event.y, event.eventTime)
+                } else {
+                    null
+                }
+                // KMK <--
                 chapterPull?.startedAtEnd?.cancel()
                 chapterPull = null
                 val state = ready
@@ -741,7 +755,28 @@ class EbookActivity : BaseActivity() {
                     )
                 }
             }
+            // KMK -->
+            MotionEvent.ACTION_MOVE -> {
+                val tap = readerTapStart
+                if (tap != null && (
+                        abs(tap.x - event.x) > ViewConfiguration.get(this).scaledTouchSlop ||
+                            abs(tap.y - event.y) > ViewConfiguration.get(this).scaledTouchSlop
+                        )
+                ) {
+                    readerTapStart = null
+                }
+            }
+            // KMK <--
             MotionEvent.ACTION_UP -> {
+                // KMK -->
+                val tap = readerTapStart
+                readerTapStart = null
+                if (tap != null && event.pointerCount == 1 &&
+                    event.eventTime - tap.downTime < ViewConfiguration.getLongPressTimeout()
+                ) {
+                    updateReaderControls(!controlsVisible)
+                }
+                // KMK <--
                 val pull = chapterPull
                 chapterPull = null
                 if (pull != null && pull.startedAtEnd.isCompleted && event.pointerCount == 1 &&
@@ -773,12 +808,30 @@ class EbookActivity : BaseActivity() {
                 }
             }
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                // KMK -->
+                readerTapStart = null
+                // KMK <--
                 chapterPull?.startedAtEnd?.cancel()
                 chapterPull = null
             }
         }
         return handled
     }
+
+    // KMK -->
+    private fun isReaderControlTap(x: Float, y: Float): Boolean {
+        if (ready == null || navigator == null || !readerReadyForInteraction || container.width <= 0 || container.height <= 0) {
+            return false
+        }
+        val localX = x - container.left
+        val localY = y - container.top
+        val contentTop = if (readerTopHost.visibility == View.VISIBLE) readerTopHost.height.toFloat() else 0f
+        val contentBottom = container.height.toFloat() -
+            if (readerBottomHost.visibility == View.VISIBLE) readerBottomHost.height.toFloat() else 0f
+        return localX in (container.width * 0.25f)..(container.width * 0.75f) &&
+            localY in contentTop..contentBottom
+    }
+    // KMK <--
 
     private fun showFontPicker() {
         val state = ready ?: return
@@ -794,14 +847,9 @@ class EbookActivity : BaseActivity() {
                     dialog.dismiss()
                     return@setSingleChoiceItems
                 }
-                // Keep a pre-reflow checkpoint; Readium manages reflow in the existing navigator.
-                reader.currentLocator.value.let { model.saveLocation(state.file, it) }
-                val changed = EpubFonts.select(
-                    model.preferences(state.file),
-                    families.getOrNull(index - 1)?.fontFamily,
-                )
-                model.savePreferences(state.file, changed)
-                reader.submitPreferences(changed)
+                applyPreferences(state) { current ->
+                    EpubFonts.select(current, families.getOrNull(index - 1)?.fontFamily)
+                }
                 dialog.dismiss()
                 updateReaderControls(false)
             }

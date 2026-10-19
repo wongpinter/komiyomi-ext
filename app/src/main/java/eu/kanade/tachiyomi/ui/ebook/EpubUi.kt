@@ -730,6 +730,7 @@ internal fun EpubLibraryScreen(
 
                 if (
                     layout != EpubLibraryLayout.COVERS &&
+                    state != EpubViewModel.State.Opening &&
                     continueBook != null &&
                     query.isBlank() &&
                     selectedCategory == null &&
@@ -1258,7 +1259,13 @@ private fun EpubCoverOnlyCard(
         onClick = { onOpen(book.file) },
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().aspectRatio(0.68f),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            // KMK -->
+            disabledContainerColor = MaterialTheme.colorScheme.surface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface,
+            // KMK <--
+        ),
         shape = RoundedCornerShape(18.dp),
     ) {
         Box(Modifier.fillMaxSize()) {
@@ -1293,7 +1300,13 @@ private fun EpubBookCard(
     Card(
         onClick = { onOpen(book.file) },
         enabled = enabled,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            // KMK -->
+            disabledContainerColor = MaterialTheme.colorScheme.surface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface,
+            // KMK <--
+        ),
         shape = RoundedCornerShape(18.dp),
     ) {
         Column {
@@ -1341,7 +1354,13 @@ private fun EpubBookListItem(
     Card(
         onClick = { onOpen(book.file) },
         enabled = enabled,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            // KMK -->
+            disabledContainerColor = MaterialTheme.colorScheme.surface,
+            disabledContentColor = MaterialTheme.colorScheme.onSurface,
+            // KMK <--
+        ),
         shape = RoundedCornerShape(18.dp),
     ) {
         Row(

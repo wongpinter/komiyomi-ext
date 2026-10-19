@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.data.backup.create.creators.SavedSearchBackupCreator
 import eu.kanade.tachiyomi.data.backup.create.creators.SourcesBackupCreator
 import eu.kanade.tachiyomi.data.backup.models.Backup
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookLibrary
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
@@ -21,6 +22,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
+import eu.kanade.tachiyomi.ui.ebook.EpubStore
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import okio.buffer
@@ -36,11 +38,16 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.BufferedOutputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
 import java.util.Locale
+import java.util.zip.Deflater
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class BackupCreator(
     private val context: Context,
@@ -96,6 +103,10 @@ class BackupCreator(
             val backupManga =
                 backupMangas(getFavorites.await() + nonFavoriteManga /* SY --> */ + mergedManga /* SY <-- */, options)
 
+            // KMK -->
+            val ebookStore = if (options.ebookLibrary) EpubStore(context) else null
+            val backupEbookLibrary = ebookStore?.backupLibrary(options.ebookFiles)
+            // KMK <--
             val backup = Backup(
                 backupManga = backupManga,
                 backupCategories = backupCategories(options),
@@ -110,6 +121,7 @@ class BackupCreator(
 
                 // KMK -->
                 backupFeeds = backupFeeds(options),
+                backupEbookLibrary = backupEbookLibrary,
                 // KMK <--
             )
 
@@ -118,14 +130,13 @@ class BackupCreator(
                 throw IllegalStateException(context.stringResource(MR.strings.empty_backup_error))
             }
 
-            file.openOutputStream()
-                .also {
-                    // Force overwrite old file
-                    (it as? FileOutputStream)?.channel?.truncate(0)
-                }
-                .sink().gzip().buffer().use {
-                    it.write(byteArray)
-                }
+            // KMK -->
+            if (backupEbookLibrary != null) {
+                writeEbookArchive(file, byteArray, backupEbookLibrary, ebookStore)
+            } else {
+                writeLegacyBackup(file, byteArray)
+            }
+            // KMK <--
             val fileUri = file.uri
 
             // Make sure it's a valid backup file
@@ -193,6 +204,49 @@ class BackupCreator(
         if (!options.savedSearchesFeeds) return emptyList()
 
         return feedBackupCreator()
+    }
+    // KMK <--
+
+    // KMK -->
+    private fun writeLegacyBackup(file: UniFile, bytes: ByteArray) {
+        file.openOutputStream()
+            .also { (it as? FileOutputStream)?.channel?.truncate(0) }
+            .sink().gzip().buffer().use { it.write(bytes) }
+    }
+
+    private fun writeEbookArchive(
+        file: UniFile,
+        manifest: ByteArray,
+        library: BackupEbookLibrary,
+        store: EpubStore,
+    ) {
+        val output = file.openOutputStream()
+            .also { (it as? FileOutputStream)?.channel?.truncate(0) }
+        ZipOutputStream(BufferedOutputStream(output)).use { zip ->
+            zip.putNextEntry(ZipEntry("backup.pb"))
+            zip.write(manifest)
+            zip.closeEntry()
+            zip.setLevel(Deflater.NO_COMPRESSION)
+            val buffer = ByteArray(64 * 1024)
+            library.books.forEach { book ->
+                listOfNotNull(book.bookEntry, book.coverEntry, book.metadataEntry).forEach { entryName ->
+                    val attachment = store.backupAttachment(book, entryName)
+                    if (attachment == null) {
+                        if (entryName == book.bookEntry) throw IOException("An ebook disappeared while the backup was being created")
+                        return@forEach
+                    }
+                    zip.putNextEntry(ZipEntry(entryName))
+                    attachment.inputStream().buffered().use { input ->
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            zip.write(buffer, 0, count)
+                        }
+                    }
+                    zip.closeEntry()
+                }
+            }
+        }
     }
     // KMK <--
 

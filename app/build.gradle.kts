@@ -31,8 +31,8 @@ android {
         // KMK <--
 
         // KMK -->
-        versionCode = 83
-        versionName = "1.0.0"
+        versionCode = 84
+        versionName = "2.0.0"
         // KMK <--
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
@@ -342,6 +342,10 @@ dependencies {
     implementation(libs.haze)
     implementation(compose.colorpicker)
     implementation(projects.flagkit)
+    // KMK <--
+
+    // KMK -->
+    implementation("io.legere:pdfiumandroid:2.0.0")
     // KMK <--
 
     // Logging

@@ -156,6 +156,7 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
                     }
                 },
             )
+            store.recordFileImport(uri, file, displayName)
             if (format == EbookFormat.PDF) {
                 displayName?.substringBeforeLast('.')?.takeIf(String::isNotBlank)?.let { store.saveBookTitle(file, it) }
             }

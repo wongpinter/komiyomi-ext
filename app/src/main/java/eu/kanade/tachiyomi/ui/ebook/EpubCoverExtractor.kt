@@ -28,18 +28,62 @@ internal object EpubCoverExtractor {
     private const val THUMBNAIL_WIDTH = 480
     private const val THUMBNAIL_HEIGHT = 720
 
-    fun readingOrderCount(epub: File): Int? = runCatching {
+    internal data class PackageSummary(
+        val title: String?,
+        val authors: String,
+        val readingOrderCount: Int?,
+    )
+
+    fun readPackageSummary(epub: File): PackageSummary? = runCatching {
         ZipFile(epub).use { zip ->
             val container = zip.getEntry("META-INF/container.xml") ?: return@use null
             val rootfilePath = readBounded(zip, container, MAX_CONTAINER_BYTES)?.let(::rootfilePath) ?: return@use null
             val packageEntry = zip.getEntry(rootfilePath) ?: return@use null
             val packageBytes = readBounded(zip, packageEntry, MAX_PACKAGE_BYTES) ?: return@use null
-            val spine = parseXml(packageBytes)
-                ?.getElementsByTagNameNS("*", "spine")
-                ?.item(0) as? Element ?: return@use null
-            spine.getElementsByTagNameNS("*", "itemref").length
+            val document = parseXml(packageBytes) ?: return@use null
+            val metadata = document.getElementsByTagNameNS("*", "metadata").item(0) as? Element
+            val title = metadata?.getElementsByTagNameNS("*", "title")?.let { titles ->
+                (0 until titles.length).asSequence()
+                    .mapNotNull { titles.item(it)?.textContent?.trim()?.takeIf(String::isNotBlank) }
+                    .firstOrNull()
+            }
+            val spine = document.getElementsByTagNameNS("*", "spine").item(0) as? Element
+            PackageSummary(
+                title = title,
+                authors = metadata?.let(::authorNames).orEmpty(),
+                readingOrderCount = spine?.getElementsByTagNameNS("*", "itemref")?.length,
+            )
         }
     }.getOrNull()
+
+    fun readingOrderCount(epub: File): Int? = readPackageSummary(epub)?.readingOrderCount
+
+    private fun authorNames(metadata: Element): String {
+        val creators = metadata.getElementsByTagNameNS("*", "creator")
+        val refinements = metadata.getElementsByTagNameNS("*", "meta")
+        return (0 until creators.length).asSequence()
+            .mapNotNull { creators.item(it) as? Element }
+            .filter { creator ->
+                val opfRole = creator.getAttributeNS("http://www.idpf.org/2007/opf", "role")
+                    .ifBlank { creator.getAttribute("role") }
+                val role = opfRole.ifBlank {
+                    val id = creator.getAttribute("id")
+                    if (id.isBlank()) {
+                        ""
+                    } else {
+                        (0 until refinements.length).asSequence()
+                            .mapNotNull { refinements.item(it) as? Element }
+                            .firstOrNull { it.getAttribute("refines") == "#$id" && it.getAttribute("property") == "role" }
+                            ?.textContent
+                            .orEmpty()
+                    }
+                }
+                role.isBlank() || role.split(Regex("\\s+")).any { it.equals("aut", ignoreCase = true) }
+            }
+            .mapNotNull { it.textContent?.trim()?.takeIf(String::isNotBlank) }
+            .distinct()
+            .joinToString(", ")
+    }
 
     fun writeThumbnail(epub: File, target: File): File? = runCatching {
         val coverBytes = ZipFile(epub).use { zip ->

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- KMK -->
+    <item type="string" name="app_name">@string/komiyomi_ext_beta_app_name</item>
+    <!-- KMK -->
+</resources>

@@ -65,6 +65,7 @@ fun MoreScreen(
     incognitoMode: Boolean,
     onIncognitoModeChange: (Boolean) -> Unit,
     // SY -->
+    showNavUpdates: Boolean,
     showNavHistory: Boolean,
     // SY <--
     onClickDownloadQueue: () -> Unit,
@@ -121,15 +122,15 @@ fun MoreScreen(
             item { HorizontalDivider() }
 
             // SY -->
-            // KMK -->
-            item {
-                TextPreferenceWidget(
-                    title = stringResource(MR.strings.label_recent_updates),
-                    icon = Icons.Outlined.NewReleases,
-                    onPreferenceClick = onClickUpdates,
-                )
+            if (!showNavUpdates) {
+                item {
+                    TextPreferenceWidget(
+                        title = stringResource(MR.strings.label_recent_updates),
+                        icon = Icons.Outlined.NewReleases,
+                        onPreferenceClick = onClickUpdates,
+                    )
+                }
             }
-            // KMK <--
             if (!showNavHistory) {
                 item {
                     TextPreferenceWidget(

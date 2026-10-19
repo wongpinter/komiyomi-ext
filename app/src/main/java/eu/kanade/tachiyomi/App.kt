@@ -232,6 +232,11 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
             WorkManager.initialize(this, Configuration.Builder().build())
         }
         val syncPreferences: SyncPreferences = Injekt.get()
+        // KMK -->
+        if (syncPreferences.disableGoogleDriveSyncIfSelected()) {
+            SyncDataJob.setupTask(this, prefInterval = 0)
+        }
+        // KMK <--
         val syncTriggerOpt = syncPreferences.getSyncTriggerOptions()
         if (syncPreferences.isSyncEnabled() && syncTriggerOpt.syncOnAppStart) {
             SyncDataJob.startNow(this@App)

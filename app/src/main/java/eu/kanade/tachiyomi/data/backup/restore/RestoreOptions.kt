@@ -14,6 +14,9 @@ data class RestoreOptions(
     // SY -->
     val savedSearchesFeeds: Boolean = true,
     // SY <--
+    // KMK -->
+    val ebookLibrary: Boolean = true,
+    // KMK <--
 ) {
 
     fun asBooleanArray() = booleanArrayOf(
@@ -25,6 +28,9 @@ data class RestoreOptions(
         // SY -->
         savedSearchesFeeds,
         // SY <--
+        // KMK -->
+        ebookLibrary,
+        // KMK <--
     )
 
     fun canRestore() =
@@ -33,7 +39,8 @@ data class RestoreOptions(
             appSettings ||
             extensionStores ||
             sourceSettings /* SY --> */ ||
-            savedSearchesFeeds /* SY <-- */
+            savedSearchesFeeds /* SY <-- */ ||
+            ebookLibrary
 
     companion object {
         val options = persistentListOf(
@@ -42,6 +49,13 @@ data class RestoreOptions(
                 getter = RestoreOptions::libraryEntries,
                 setter = { options, enabled -> options.copy(libraryEntries = enabled) },
             ),
+            // KMK -->
+            Entry(
+                label = KMR.strings.ebook_backup_restore,
+                getter = RestoreOptions::ebookLibrary,
+                setter = { options, enabled -> options.copy(ebookLibrary = enabled) },
+            ),
+            // KMK <--
             Entry(
                 label = MR.strings.categories,
                 getter = RestoreOptions::categories,
@@ -80,8 +94,11 @@ data class RestoreOptions(
             extensionStores = array[3],
             sourceSettings = array[4],
             // SY -->
-            savedSearchesFeeds = array[5],
+            savedSearchesFeeds = array.getOrElse(5) { true },
             // SY <--
+            // KMK -->
+            ebookLibrary = array.getOrElse(6) { true },
+            // KMK <--
         )
     }
 

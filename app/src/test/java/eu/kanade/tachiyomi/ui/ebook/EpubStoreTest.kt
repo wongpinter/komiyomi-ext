@@ -23,26 +23,54 @@ import java.io.File
 class EpubStoreTest {
     @TempDir lateinit var directory: File
     private val values = mutableMapOf<String, String?>()
+    private val intValues = mutableMapOf<String, Int>()
+    private val booleanValues = mutableMapOf<String, Boolean>()
+    private val stringSetValues = mutableMapOf<String, Set<String>>()
 
     private fun store(): EpubStore {
         val context = mockk<Context>()
         val preferences = mockk<SharedPreferences>()
         val editor = mockk<SharedPreferences.Editor>(relaxed = true)
         every { context.noBackupFilesDir } returns directory
-        every { context.getSharedPreferences("epub_prototype", Context.MODE_PRIVATE) } returns preferences
+        every { context.getSharedPreferences(any(), Context.MODE_PRIVATE) } returns preferences
         every { preferences.getString(any(), any()) } answers { values[firstArg()] ?: secondArg() }
-        every { preferences.contains(any()) } answers { values.containsKey(firstArg()) }
+        every { preferences.getInt(any(), any()) } answers { intValues[firstArg()] ?: secondArg() }
+        every { preferences.getBoolean(any(), any()) } answers { booleanValues[firstArg()] ?: secondArg() }
+        every { preferences.getStringSet(any(), any()) } answers { stringSetValues[firstArg()] ?: secondArg() }
+        every { preferences.contains(any()) } answers {
+            val key = firstArg<String>()
+            values.containsKey(key) || intValues.containsKey(key) || booleanValues.containsKey(key) || stringSetValues.containsKey(key)
+        }
         every { preferences.edit() } returns editor
         every { editor.putString(any(), any()) } answers {
             values[firstArg()] = secondArg()
             editor
         }
+        every { editor.putInt(any(), any()) } answers {
+            intValues[firstArg()] = secondArg()
+            editor
+        }
+        every { editor.putBoolean(any(), any()) } answers {
+            booleanValues[firstArg()] = secondArg()
+            editor
+        }
+        every { editor.putStringSet(any(), any()) } answers {
+            stringSetValues[firstArg()] = secondArg<Set<String>>().toSet()
+            editor
+        }
         every { editor.remove(any()) } answers {
-            values.remove(firstArg<String>())
+            val key = firstArg<String>()
+            values.remove(key)
+            intValues.remove(key)
+            booleanValues.remove(key)
+            stringSetValues.remove(key)
             editor
         }
         every { editor.clear() } answers {
             values.clear()
+            intValues.clear()
+            booleanValues.clear()
+            stringSetValues.clear()
             editor
         }
         return EpubStore(context).also {
@@ -262,6 +290,38 @@ class EpubStoreTest {
         val store = store()
         values["preferences-book.epub"] = "broken"
         assertEquals(true, store.readerPreferences(File(store.directory, "book.epub")).scroll)
+    }
+
+    @Test
+    fun `pdf position settings and bookmarks persist independently per book`() {
+        val store = store()
+        val first = File(store.directory, "first.pdf")
+        val second = File(store.directory, "second.pdf")
+        val settings = PdfReaderSettings(
+            layout = PdfLayoutMode.PAGINATED,
+            fit = PdfFitMode.PAGE,
+            trimMargins = true,
+            color = PdfColorMode.SEPIA,
+            pageGapDp = 30,
+        )
+
+        assertEquals(0, store.pdfPage(first))
+        assertEquals(PdfReaderSettings(), store.pdfReaderSettings(first))
+        store.savePdfPage(first, 12)
+        store.savePdfPage(second, -3)
+        store.savePdfReaderSettings(first, settings)
+        store.savePdfBookmarks(first, setOf(1, 3))
+        store.savePdfBookmarks(second, setOf(-1, 2))
+        assertEquals(setOf(1), store.togglePdfBookmark(first, 3))
+        assertEquals(setOf(1, 8), store.togglePdfBookmark(first, 8))
+
+        val reopened = store()
+        assertEquals(12, reopened.pdfPage(first))
+        assertEquals(0, reopened.pdfPage(second))
+        assertEquals(settings.copy(pageGapDp = 24), reopened.pdfReaderSettings(first))
+        assertEquals(PdfReaderSettings(), reopened.pdfReaderSettings(second))
+        assertEquals(setOf(1, 8), reopened.pdfBookmarks(first))
+        assertEquals(setOf(2), reopened.pdfBookmarks(second))
     }
 }
 // KMK <--

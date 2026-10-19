@@ -5,6 +5,8 @@ import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupDecoder
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
+import eu.kanade.tachiyomi.data.backup.models.BackupEbook
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookLibrary
 import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupFeed
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
@@ -12,6 +14,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSavedSearch
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.EbookLibraryRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.FeedRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
@@ -77,6 +80,9 @@ class BackupRestorer(
 
     private suspend fun restoreFromFile(uri: Uri, options: RestoreOptions) {
         val backup = BackupDecoder(context).decode(uri)
+        // KMK -->
+        val ebookLibrary = backup.backupEbookLibrary
+        // KMK <--
 
         // Store source mapping for error messages
         val backupMaps = backup.backupSources
@@ -102,6 +108,11 @@ class BackupRestorer(
         if (options.sourceSettings) {
             restoreAmount += 1
         }
+        // KMK -->
+        if (options.ebookLibrary && ebookLibrary != null) {
+            restoreAmount += ebookLibrary.books.size + 1
+        }
+        // KMK <--
 
         coroutineScope {
             if (options.categories) {
@@ -132,6 +143,11 @@ class BackupRestorer(
 
             // TODO: optionally trigger online library + tracker update
         }
+        // KMK -->
+        if (options.ebookLibrary) {
+            ebookLibrary?.let { restoreEbookLibrary(uri, it) }
+        }
+        // KMK <--
     }
 
     context(scope: CoroutineScope)
@@ -277,6 +293,28 @@ class BackupRestorer(
                 }
             }
     }
+
+    // KMK -->
+    private suspend fun restoreEbookLibrary(uri: Uri, library: BackupEbookLibrary) {
+        EbookLibraryRestorer(context).restore(uri, library, BackupDecoder(context)) { book, error ->
+            if (error != null) errors.add(Date() to "${book.title}: $error")
+            restoreProgress += 1
+            with(notifier) {
+                showRestoreProgress(book.title, restoreProgress, restoreAmount, isSync)
+                    .show(Notifications.ID_RESTORE_PROGRESS)
+            }
+        }
+        restoreProgress += 1
+        with(notifier) {
+            showRestoreProgress(
+                context.stringResource(KMR.strings.ebook_backup_section),
+                restoreProgress,
+                restoreAmount,
+                isSync,
+            ).show(Notifications.ID_RESTORE_PROGRESS)
+        }
+    }
+    // KMK <--
 
     private fun writeErrorLog(): File {
         try {

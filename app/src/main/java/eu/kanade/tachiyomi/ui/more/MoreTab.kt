@@ -19,6 +19,7 @@ import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabOptions
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.base.BasePreferences
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.more.MoreScreen
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.R
@@ -80,6 +81,11 @@ data object MoreTab : Tab {
             onIncognitoModeChange = { screenModel.incognitoMode = it },
             // SY -->
             // KMK -->
+            // Updates remains available from More after its bottom-navigation entry was removed.
+            showNavUpdates = true,
+            // KMK <--
+            // KMK -->
+            // Updates stays in More after removal from the bottom-navigation bar.
             showNavHistory = false,
             // KMK <--
             // SY <--
@@ -112,10 +118,17 @@ data object MoreTab : Tab {
 private class MoreScreenModel(
     private val downloadManager: DownloadManager = Injekt.get(),
     preferences: BasePreferences = Injekt.get(),
+    // SY -->
+    uiPreferences: UiPreferences = Injekt.get(),
+    // SY <--
 ) : ScreenModel {
 
     var downloadedOnly by preferences.downloadedOnly().asState(screenModelScope)
     var incognitoMode by preferences.incognitoMode().asState(screenModelScope)
+
+    // SY -->
+    val showNavUpdates by uiPreferences.showNavUpdates().asState(screenModelScope)
+    // SY <--
 
     private var _downloadQueueState: MutableStateFlow<DownloadQueueState> = MutableStateFlow(DownloadQueueState.Stopped)
     val downloadQueueState: StateFlow<DownloadQueueState> = _downloadQueueState.asStateFlow()

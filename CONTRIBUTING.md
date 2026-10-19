@@ -45,15 +45,6 @@ When creating a fork, remember to:
 - Keep telemetry and crash-reporting endpoints project-owned; do not send Komiyomi Ext data to upstream services.
 
 
-### Supporting Cloud Sync - Google Drive Implementation
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a new project
-3. Go to API & Services -> Library -> Google Drive API and click enable
-4. Go to API & Services -> Oauth consent screen
-5. Create it, fill in the app name, user support email, and developer contact information
-6. In the next screen, click add or remove scopes, and add the `.../auth/drive.appdata` and `.../auth/drive.file` scopes
-7. Don't add any test users and go back to the dashboard
-8. Click publish
-9. Go to API & Services -> Credentials
-10. The app currently reads `client_secrets.json` from `app/src/main/assets/` and uses the callback `com.wongpinter.komiyomi.ext:/oauth2redirect`.
-11. The current implementation uses a custom URI scheme for Google OAuth. Google no longer supports custom-scheme redirects on Android; migrate the Google Drive sign-in flow to a supported Android OAuth method before public release. See [Google's native app OAuth guidance](https://developers.google.com/identity/protocols/oauth2/native-app).
+### Google Drive sync
+
+Google Drive sync is temporarily disabled. The current sign-in uses an unsupported custom URI callback, so the app hides the provider, disables saved selections, and does not register the callback activity. Re-enable it only after migrating sign-in to a supported Android OAuth flow and validating release credentials. See [Google's native app OAuth guidance](https://developers.google.com/identity/protocols/oauth2/native-app).

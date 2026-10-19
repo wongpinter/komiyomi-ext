@@ -201,7 +201,8 @@ successful backup/relink tests and benchmark comparison against Phase 0.
 
 Incremental/cancelable full-text search, highlights/notes, annotation export, dictionary,
 TTS and optional synchronization. Evaluate each separately; none blocks the initial reader.
-DRM, PDF, MOBI/AZW, OPDS and cloud sync are not initial-scope promises.
+The v2.0.0 release includes the implemented local PDF reader alongside EPUB, with separate
+page state and reader settings. DRM, MOBI/AZW, OPDS and cloud sync are not initial-scope promises.
 
 ## 8. Test and repository requirements
 

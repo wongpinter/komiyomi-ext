@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -42,6 +43,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -65,9 +67,12 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.UnfoldLess
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material.icons.outlined.ViewDay
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -119,7 +124,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
@@ -420,7 +427,12 @@ internal fun PdfReaderScreen(
         pageNavigationVisible = false
     }
 
-    BackHandler(enabled = pageNavigationVisible, onBack = ::closePageNavigation)
+    BackHandler(enabled = pageNavigationVisible || !hudVisible) {
+        when {
+            pageNavigationVisible -> closePageNavigation()
+            else -> hudVisible = true
+        }
+    }
 
     LaunchedEffect(file, session, settings.layout, verticalState, horizontalState) {
         snapshotFlow { currentPage }
@@ -897,7 +909,7 @@ internal fun PdfReaderScreen(
             exit = slideOutHorizontally(tween(150)) { -it },
         ) {
             Surface(
-                modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f),
+                modifier = Modifier.fillMaxHeight().widthIn(max = 420.dp).fillMaxWidth(0.84f),
                 shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface,
@@ -905,6 +917,7 @@ internal fun PdfReaderScreen(
             ) {
                 Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
                     PdfPagesSheet(
+                        file = file,
                         session = session,
                         pageCount = pageCount,
                         currentPage = currentPage,
@@ -1082,6 +1095,319 @@ private sealed interface PdfPageState {
     data class Failed(override val aspectRatio: Float) : PdfPageState
 }
 
+private sealed interface PdfOutlineState {
+    object Unloaded : PdfOutlineState
+    object Loading : PdfOutlineState
+    object Failed : PdfOutlineState
+    data class Loaded(val entries: List<PdfOutlineEntry>) : PdfOutlineState
+}
+
+private data class PdfOutlineRow(
+    val entry: PdfOutlineEntry,
+    val depth: Int,
+)
+
+private data class PdfOutlineSearchRow(
+    val row: PdfOutlineRow,
+    val normalizedTitle: String,
+    val parentIndex: Int?,
+)
+
+private data class PdfOutlineSearchIndex(
+    val rows: List<PdfOutlineSearchRow>,
+    val expandableKeys: Set<String>,
+)
+
+private data class PdfOutlineSearchResult(
+    val query: String,
+    val rows: List<PdfOutlineRow>,
+)
+
+private suspend fun buildPdfOutlineSearchIndex(entries: List<PdfOutlineEntry>): PdfOutlineSearchIndex {
+    val coroutineContext = currentCoroutineContext()
+    val rows = mutableListOf<PdfOutlineSearchRow>()
+    val expandableKeys = mutableSetOf<String>()
+    var visitedEntries = 0
+
+    fun append(entries: List<PdfOutlineEntry>, parentIndex: Int?, depth: Int) {
+        entries.forEach { entry ->
+            visitedEntries++
+            if (visitedEntries % 128 == 0) coroutineContext.ensureActive()
+
+            val currentIndex = rows.size
+            rows += PdfOutlineSearchRow(
+                row = PdfOutlineRow(entry, depth),
+                normalizedTitle = entry.title.lowercase(),
+                parentIndex = parentIndex,
+            )
+            if (entry.children.isNotEmpty()) expandableKeys += entry.key
+            append(entry.children, parentIndex = currentIndex, depth = depth + 1)
+        }
+    }
+
+    append(entries, parentIndex = null, depth = 0)
+    coroutineContext.ensureActive()
+    return PdfOutlineSearchIndex(rows, expandableKeys)
+}
+
+private suspend fun PdfOutlineSearchIndex.search(query: String): List<PdfOutlineRow> {
+    val coroutineContext = currentCoroutineContext()
+    val matchingKeys = mutableSetOf<String>()
+
+    rows.forEachIndexed { index, searchRow ->
+        if (index % 128 == 0) coroutineContext.ensureActive()
+        if (searchRow.normalizedTitle.contains(query)) {
+            matchingKeys += searchRow.row.entry.key
+            var parentIndex = searchRow.parentIndex
+            while (parentIndex != null) {
+                val parent = rows[parentIndex]
+                matchingKeys += parent.row.entry.key
+                parentIndex = parent.parentIndex
+            }
+        }
+    }
+
+    return rows.mapIndexedNotNull { index, searchRow ->
+        if (index % 128 == 0) coroutineContext.ensureActive()
+        searchRow.row.takeIf { it.entry.key in matchingKeys }
+    }
+}
+
+private fun flattenPdfOutline(
+    entries: List<PdfOutlineEntry>,
+    expandedKeys: Set<String>,
+    expandAll: Boolean,
+): List<PdfOutlineRow> {
+    val rows = mutableListOf<PdfOutlineRow>()
+    fun append(entries: List<PdfOutlineEntry>, depth: Int) {
+        entries.forEach { entry ->
+            rows += PdfOutlineRow(entry, depth)
+            if (entry.children.isNotEmpty() && (expandAll || entry.key in expandedKeys)) {
+                append(entry.children, depth + 1)
+            }
+        }
+    }
+    append(entries, depth = 0)
+    return rows
+}
+
+@Composable
+private fun PdfOutlineContents(
+    entries: List<PdfOutlineEntry>,
+    currentPage: Int,
+    pageCount: Int,
+    onSelectPage: (Int) -> Unit,
+) {
+    val initialExpandedKeys = remember(entries) {
+        entries.filter { it.children.isNotEmpty() }.mapTo(mutableSetOf()) { it.key }
+    }
+    var expandedKeys by remember(entries) { mutableStateOf<Set<String>>(initialExpandedKeys) }
+    var query by remember(entries) { mutableStateOf("") }
+    var searchIndex by remember(entries) { mutableStateOf<PdfOutlineSearchIndex?>(null) }
+    var searchResult by remember(entries) { mutableStateOf<PdfOutlineSearchResult?>(null) }
+    val allExpandableKeys = searchIndex?.expandableKeys.orEmpty()
+    val normalizedQuery = query.trim().lowercase()
+    val isSearchPending = normalizedQuery.isNotEmpty() &&
+        (searchIndex == null || searchResult?.query != normalizedQuery)
+    val expandedRows = remember(entries, expandedKeys) {
+        flattenPdfOutline(entries, expandedKeys, expandAll = false)
+    }
+    val visibleRows = if (normalizedQuery.isEmpty()) {
+        expandedRows
+    } else {
+        searchResult?.takeIf { it.query == normalizedQuery }?.rows.orEmpty()
+    }
+
+    LaunchedEffect(entries) {
+        searchIndex = withContext(Dispatchers.Default) { buildPdfOutlineSearchIndex(entries) }
+    }
+    LaunchedEffect(entries, searchIndex) {
+        val index = searchIndex ?: return@LaunchedEffect
+        snapshotFlow { query.trim().lowercase() }
+            .debounce(180)
+            .distinctUntilChanged()
+            .collectLatest { searchQuery ->
+                if (searchQuery.isEmpty()) {
+                    searchResult = null
+                } else {
+                    val rows = withContext(Dispatchers.Default) { index.search(searchQuery) }
+                    searchResult = PdfOutlineSearchResult(searchQuery, rows)
+                }
+            }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            label = { Text(stringResource(KMR.strings.ebook_pdf_outline_search)) },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = stringResource(KMR.strings.ebook_pdf_outline_clear_search),
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (isSearchPending) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(
+                        stringResource(KMR.strings.ebook_pdf_outline_entries, visibleRows.size),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            IconButton(
+                onClick = { expandedKeys = allExpandableKeys },
+                enabled = normalizedQuery.isEmpty() && searchIndex != null && expandedKeys != allExpandableKeys,
+            ) {
+                Icon(
+                    Icons.Outlined.UnfoldMore,
+                    contentDescription = stringResource(KMR.strings.ebook_pdf_outline_expand_all),
+                )
+            }
+            IconButton(
+                onClick = { expandedKeys = emptySet() },
+                enabled = normalizedQuery.isEmpty() && expandedKeys.isNotEmpty(),
+            ) {
+                Icon(
+                    Icons.Outlined.UnfoldLess,
+                    contentDescription = stringResource(KMR.strings.ebook_pdf_outline_collapse_all),
+                )
+            }
+        }
+        when {
+            isSearchPending -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            visibleRows.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        stringResource(KMR.strings.ebook_pdf_outline_no_matches),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(visibleRows, key = { it.entry.key }) { row ->
+                        val expanded = normalizedQuery.isNotEmpty() || row.entry.key in expandedKeys
+                        PdfOutlineItem(
+                            row = row,
+                            isExpanded = expanded,
+                            canToggle = normalizedQuery.isEmpty(),
+                            currentPage = currentPage,
+                            pageCount = pageCount,
+                            onToggle = {
+                                expandedKeys = if (row.entry.key in expandedKeys) {
+                                    expandedKeys - row.entry.key
+                                } else {
+                                    expandedKeys + row.entry.key
+                                }
+                            },
+                            onSelectPage = onSelectPage,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfOutlineItem(
+    row: PdfOutlineRow,
+    isExpanded: Boolean,
+    canToggle: Boolean,
+    currentPage: Int,
+    pageCount: Int,
+    onToggle: () -> Unit,
+    onSelectPage: (Int) -> Unit,
+) {
+    val pageIndex = row.entry.pageIndex?.takeIf { it in 0 until pageCount }
+    val title = if (row.entry.title.isBlank()) {
+        stringResource(KMR.strings.ebook_pdf_outline_untitled)
+    } else {
+        row.entry.title
+    }
+    val isCurrentPage = pageIndex == currentPage
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { selected = isCurrentPage }
+            .clickable(enabled = pageIndex != null) { pageIndex?.let(onSelectPage) },
+        color = if (isCurrentPage) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        contentColor = if (isCurrentPage) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(10.dp),
+        border = if (isCurrentPage) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .padding(start = (4 + row.depth * 10).coerceAtMost(64).dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (row.entry.children.isNotEmpty()) {
+                IconButton(onClick = onToggle, enabled = canToggle, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        if (isExpanded) Icons.Outlined.ExpandMore else Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                        contentDescription = stringResource(
+                            if (isExpanded) KMR.strings.ebook_pdf_outline_collapse else KMR.strings.ebook_pdf_outline_expand,
+                        ),
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.size(36.dp))
+            }
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isCurrentPage) FontWeight.SemiBold else FontWeight.Normal,
+            )
+            if (pageIndex != null) {
+                Text(
+                    text = stringResource(KMR.strings.ebook_pdf_outline_page, pageIndex + 1),
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isCurrentPage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PdfSettingsSheet(
     settings: PdfReaderSettings,
@@ -1154,6 +1480,7 @@ private fun PdfSettingsSheet(
 
 @Composable
 private fun PdfPagesSheet(
+    file: File,
     session: PdfDocumentSession,
     pageCount: Int,
     currentPage: Int,
@@ -1165,6 +1492,24 @@ private fun PdfPagesSheet(
     onClose: () -> Unit,
     onSelectPage: (Int) -> Unit,
 ) {
+    var outlineState by remember(file) { mutableStateOf<PdfOutlineState>(PdfOutlineState.Unloaded) }
+    var outlineRetryToken by remember(file) { mutableIntStateOf(0) }
+
+    LaunchedEffect(file, selectedTab, outlineRetryToken) {
+        if (selectedTab != 0 || outlineState !is PdfOutlineState.Unloaded) return@LaunchedEffect
+        outlineState = PdfOutlineState.Loading
+        try {
+            outlineState = PdfOutlineState.Loaded(PdfOutlineReader.read(file))
+        } catch (error: CancellationException) {
+            outlineState = PdfOutlineState.Unloaded
+            throw error
+        } catch (_: Exception) {
+            outlineState = PdfOutlineState.Failed
+        } catch (_: LinkageError) {
+            outlineState = PdfOutlineState.Failed
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
@@ -1201,8 +1546,42 @@ private fun PdfPagesSheet(
             }
         }
         when (selectedTab) {
-            0 -> Box(Modifier.fillMaxWidth().height(220.dp).padding(24.dp), contentAlignment = Alignment.Center) {
-                Text(stringResource(KMR.strings.ebook_pdf_no_outline), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            0 -> when (val state = outlineState) {
+                PdfOutlineState.Unloaded,
+                PdfOutlineState.Loading,
+                -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(stringResource(KMR.strings.ebook_pdf_outline_loading))
+                    }
+                }
+                is PdfOutlineState.Loaded -> {
+                    if (state.entries.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().weight(1f).padding(24.dp), contentAlignment = Alignment.Center) {
+                            Text(stringResource(KMR.strings.ebook_pdf_no_outline), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        PdfOutlineContents(
+                            entries = state.entries,
+                            currentPage = currentPage,
+                            pageCount = pageCount,
+                            onSelectPage = onSelectPage,
+                        )
+                    }
+                }
+                PdfOutlineState.Failed -> Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(KMR.strings.ebook_pdf_outline_load_failed), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(
+                            onClick = {
+                                outlineState = PdfOutlineState.Unloaded
+                                outlineRetryToken++
+                            },
+                        ) {
+                            Text(stringResource(KMR.strings.ebook_pdf_outline_retry))
+                        }
+                    }
+                }
             }
             else -> {
                 val bookmarkedPages = remember(bookmarks) { bookmarks.sorted() }

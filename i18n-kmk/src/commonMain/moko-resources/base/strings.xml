@@ -186,6 +186,7 @@
     <!-- KMK -->
     <!-- Offline archives -->
     <string name="komiyomi_ext_app_name" translatable="false">Komiyomi Ext</string>
+    <string name="komiyomi_ext_beta_app_name" translatable="false">Komiyomi Ext Beta</string>
     <string name="komiyomi_ext_app_description" translatable="false">Komiyomi Ext - a manga reader app</string>
     <string name="discord_rpc_unavailable">Rich Presence is unavailable until Komiyomi Ext has its own Discord application.</string>
     <string name="website">Website</string>
@@ -369,6 +370,10 @@
     <string name="ebook_pdf_page_number">Page %1$d of %2$d</string>
     <string name="ebook_pdf_page_description">Page %1$d</string>
     <string name="ebook_pdf_page_failed">Could not render this page.</string>
+    <string name="ebook_backup_section">Ebook library</string>
+    <string name="ebook_backup_library">Library, reading progress, source paths and caches (source access is needed when restoring without files)</string>
+    <string name="ebook_backup_files">Also include EPUB/PDF files (can make the backup very large)</string>
+    <string name="ebook_backup_restore">Ebook library, reading progress, source paths and caches</string>
     <string name="ebook_pdf_previous_page">Previous page</string>
     <string name="ebook_pdf_next_page">Next page</string>
     <string name="ebook_pdf_page_count">Page count</string>
@@ -407,6 +412,19 @@
     <string name="ebook_pdf_search_results">Pages with matches</string>
     <string name="ebook_pdf_search_result">Page %1$d</string>
     <string name="ebook_pdf_bookmarked_page">Bookmarked</string>
+    <string name="ebook_pdf_outline_search">Search table of contents</string>
+    <string name="ebook_pdf_outline_clear_search">Clear contents search</string>
+    <string name="ebook_pdf_outline_loading">Loading table of contents…</string>
+    <string name="ebook_pdf_outline_load_failed">Couldn’t load this table of contents.</string>
+    <string name="ebook_pdf_outline_retry">Try again</string>
+    <string name="ebook_pdf_outline_expand_all">Expand all sections</string>
+    <string name="ebook_pdf_outline_collapse_all">Collapse all sections</string>
+    <string name="ebook_pdf_outline_entries">%1$d visible entries</string>
+    <string name="ebook_pdf_outline_page">p. %1$d</string>
+    <string name="ebook_pdf_outline_expand">Expand section</string>
+    <string name="ebook_pdf_outline_collapse">Collapse section</string>
+    <string name="ebook_pdf_outline_untitled">Untitled section</string>
+    <string name="ebook_pdf_outline_no_matches">No matching sections.</string>
     <string name="ebook_pdf_no_outline">This PDF does not provide a table of contents.</string>
     <string name="ebook_pdf_no_bookmarks">No bookmarked pages yet.</string>
     <string name="ebook_pdf_add_bookmark">Bookmark this page</string>

@@ -17,5 +17,7 @@ data class Backup(
     // KMK -->
     // Global Popular/Latest feeds
     @ProtoNumber(610) var backupFeeds: List<BackupFeed> = emptyList(),
+    // Ebook library, progress, paths, and optional file attachments.
+    @ProtoNumber(620) var backupEbookLibrary: BackupEbookLibrary? = null,
     // KMK <--
 )

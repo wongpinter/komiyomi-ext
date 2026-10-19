@@ -11,7 +11,6 @@ import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.restore.BackupRestoreJob
 import eu.kanade.tachiyomi.data.backup.restore.RestoreOptions
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
-import eu.kanade.tachiyomi.data.sync.service.GoogleDriveSyncService
 import eu.kanade.tachiyomi.data.sync.service.SyncData
 import eu.kanade.tachiyomi.data.sync.service.SyncYomiSyncService
 import eu.kanade.tachiyomi.data.sync.service.WebDavSyncService
@@ -62,7 +61,10 @@ class SyncManager(
         ;
 
         companion object {
-            fun fromInt(value: Int) = entries.firstOrNull { it.value == value } ?: NONE
+            // KMK -->
+            // Treat persisted Google Drive values as disabled, including before startup migration runs.
+            fun fromInt(value: Int) = if (value == GOOGLE_DRIVE.value) NONE else entries.firstOrNull { it.value == value } ?: NONE
+            // KMK <--
         }
     }
 
@@ -137,9 +139,11 @@ class SyncManager(
                 )
             }
 
+            // KMK -->
             SyncService.GOOGLE_DRIVE -> {
-                GoogleDriveSyncService(context, json, syncPreferences)
+                null
             }
+            // KMK <--
 
             // KMK -->
             SyncService.WEB_DAV -> {
