@@ -17,6 +17,18 @@
     <string name="action_open_folder">Open folder</string>
     <string name="action_clear_manga">Clear manga</string>
     <string name="action_update">Update</string>
+    <!-- KMK -->
+    <string name="action_search_metadata_from_extensions">Search metadata from extensions</string>
+    <string name="action_apply_extension_metadata">Use as local manga metadata</string>
+    <string name="metadata_search_title">Search extensions</string>
+    <string name="metadata_search_query_label">Manga title</string>
+    <string name="metadata_search_description">Choose a matching result to update this manga’s details and cover.</string>
+    <string name="metadata_search_clear_query">Clear search title</string>
+    <string name="metadata_search_button">Search extensions</string>
+    <string name="metadata_search_result_guidance">Tap a result to save its details and cover to this local manga.</string>
+    <string name="local_manga_metadata_updated">Local manga metadata updated</string>
+    <string name="local_manga_metadata_update_failed">Could not update local manga metadata</string>
+    <!-- KMK END -->
         <!-- History section -->
     <string name="action_filter_unfinished_manga">Unfinished manga</string>
     <string name="action_filter_unfinished_chapter">Unfinished chapter</string>

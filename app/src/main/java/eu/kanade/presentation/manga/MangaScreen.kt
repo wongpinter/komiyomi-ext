@@ -207,6 +207,8 @@ fun MangaScreen(
     onCoverLoaded: (MangaCover) -> Unit,
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
+    onClickSearchMetadata: (() -> Unit)?,
+    onClickApplyMetadata: (() -> Unit)?,
     hazeState: HazeState,
     // KMK <--
 ) {
@@ -276,6 +278,8 @@ fun MangaScreen(
             onCoverLoaded = onCoverLoaded,
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
+            onClickSearchMetadata = onClickSearchMetadata,
+            onClickApplyMetadata = onClickApplyMetadata,
             hazeState = hazeState,
             // KMK <--
         )
@@ -338,6 +342,8 @@ fun MangaScreen(
             onCoverLoaded = onCoverLoaded,
             coverRatio = coverRatio,
             onPaletteScreenClick = onPaletteScreenClick,
+            onClickSearchMetadata = onClickSearchMetadata,
+            onClickApplyMetadata = onClickApplyMetadata,
             hazeState = hazeState,
             // KMK <--
         )
@@ -417,6 +423,8 @@ private fun MangaScreenSmallImpl(
     onCoverLoaded: (MangaCover) -> Unit,
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
+    onClickSearchMetadata: (() -> Unit)?,
+    onClickApplyMetadata: (() -> Unit)?,
     hazeState: HazeState,
     // KMK <--
 ) {
@@ -489,6 +497,8 @@ private fun MangaScreenSmallImpl(
                 onClickSourceSettings = onClickSourceSettingsClicked,
                 onClearManga = onClearManga,
                 onOpenMangaFolder = onOpenMangaFolder,
+                onClickSearchMetadata = onClickSearchMetadata,
+                onClickApplyMetadata = onClickApplyMetadata,
                 onClickRelatedMangas = onRelatedMangasScreenClick.takeIf {
                     !expandRelatedMangas &&
                         showRelatedMangasInOverflow &&
@@ -877,6 +887,8 @@ private fun MangaScreenLargeImpl(
     onCoverLoaded: (MangaCover) -> Unit,
     coverRatio: MutableFloatState,
     onPaletteScreenClick: () -> Unit,
+    onClickSearchMetadata: (() -> Unit)?,
+    onClickApplyMetadata: (() -> Unit)?,
     hazeState: HazeState,
     // KMK <--
 ) {
@@ -941,6 +953,8 @@ private fun MangaScreenLargeImpl(
                 onClickSourceSettings = onClickSourceSettingsClicked,
                 onClearManga = onClearManga,
                 onOpenMangaFolder = onOpenMangaFolder,
+                onClickSearchMetadata = onClickSearchMetadata,
+                onClickApplyMetadata = onClickApplyMetadata,
                 onClickRelatedMangas = onRelatedMangasScreenClick.takeIf {
                     !expandRelatedMangas &&
                         showRelatedMangasInOverflow &&

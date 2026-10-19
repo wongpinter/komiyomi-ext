@@ -180,18 +180,22 @@ private fun LibrarySelectionToolbar(
         titleContent = { Text(text = "$selectedCount") },
         actions = {
             AppBarActions(
-                persistentListOf(
-                    AppBar.Action(
-                        title = stringResource(MR.strings.action_select_all),
-                        icon = Icons.Outlined.SelectAll,
-                        onClick = onClickSelectAll,
-                    ),
-                    AppBar.Action(
-                        title = stringResource(MR.strings.action_select_inverse),
-                        icon = Icons.Outlined.FlipToBack,
-                        onClick = onClickInvertSelection,
-                    ),
-                ),
+                persistentListOf<AppBar.AppBarAction>().builder().apply {
+                    add(
+                        AppBar.Action(
+                            title = stringResource(MR.strings.action_select_all),
+                            icon = Icons.Outlined.SelectAll,
+                            onClick = onClickSelectAll,
+                        ),
+                    )
+                    add(
+                        AppBar.Action(
+                            title = stringResource(MR.strings.action_select_inverse),
+                            icon = Icons.Outlined.FlipToBack,
+                            onClick = onClickInvertSelection,
+                        ),
+                    )
+                }.build(),
             )
         },
         isActionMode = true,

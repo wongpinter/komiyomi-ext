@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.Close
@@ -30,6 +32,8 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.TravelExplore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -39,6 +43,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,6 +60,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -67,9 +73,12 @@ import coil3.compose.AsyncImage
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.more.settings.screen.SettingsDataScreen
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.awaitCancellation
 import tachiyomi.domain.chapter.model.ArchiveReadingProgress
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.storage.service.StoragePreferences
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
@@ -95,6 +104,7 @@ class LocalArchiveScreen(
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 model.startObservingProgress()
                 try {
+                    model.refreshLocalMangaMetadata()
                     awaitCancellation()
                 } finally {
                     model.stopObservingProgress()
@@ -111,6 +121,8 @@ class LocalArchiveScreen(
         var query by rememberSaveable { mutableStateOf("") }
         // KMK -->
         var searchVisible by rememberSaveable { mutableStateOf(false) }
+        var showMetadataSearchDialog by rememberSaveable { mutableStateOf(false) }
+        var metadataSearchQuery by rememberSaveable(seriesKey) { mutableStateOf("") }
         val searchFocusRequester = remember { FocusRequester() }
         LaunchedEffect(searchVisible) {
             if (searchVisible) searchFocusRequester.requestFocus()
@@ -159,11 +171,14 @@ class LocalArchiveScreen(
         // KMK <--
         val status = OfflineReadingFilter.entries.firstOrNull { it.name == statusValue } ?: OfflineReadingFilter.ALL
         val sort = OfflineLibrarySort.entries.firstOrNull { it.name == sortValue } ?: OfflineLibrarySort.TITLE
-        val filtered = remember(state.entries, query, sort, descending, state.progress, favorites, favoritesOnly, status, state.metadata, duplicatesOnly, duplicateHashes) {
+        val filtered = remember(state.entries, query, sort, descending, state.progress, favorites, favoritesOnly, status, state.metadata, duplicatesOnly, duplicateHashes, state.localMangaByUrl) {
             val matches = state.entries.filter { entry ->
                 val progress = state.progress[entry.path]
                 val archiveMetadata = state.metadata[entry.identity]
-                (entry.name.contains(query, true) || (recursive && entry.path.contains(query, true)) || archiveMetadata?.series?.contains(query, true) == true) &&
+                val localTitle = offlineMangaUrl(listOf(entry), offlineSeriesKey(entry, state.metadata))
+                    ?.let(state.localMangaByUrl::get)
+                    ?.title
+                (entry.name.contains(query, true) || (recursive && entry.path.contains(query, true)) || archiveMetadata?.series?.contains(query, true) == true || localTitle?.contains(query, true) == true) &&
                     (
                         !recursive || (
                             (!favoritesOnly || entry.file.uri.toString() in favorites) &&
@@ -178,12 +193,29 @@ class LocalArchiveScreen(
             }
             if (recursive) sortOfflineLibrary(matches, sort, descending) else matches
         }
-        val series = remember(filtered, sort, descending, state.metadata) { groupOfflineLibrary(filtered, sort, descending, state.metadata) }
+        val series = remember(filtered, sort, descending, state.metadata, state.localMangaByUrl) {
+            groupOfflineLibrary(filtered, sort, descending, state.metadata).map { item ->
+                val localTitle = offlineMangaUrl(item.entries, item.key)
+                    ?.let(state.localMangaByUrl::get)
+                    ?.title
+                    ?.takeIf { it.isNotBlank() }
+                if (localTitle == null) item else item.copy(title = localTitle)
+            }
+        }
         // KMK -->
-        val allSeries = remember(state.entries, sort, descending, state.metadata) {
-            groupOfflineLibrary(state.entries, sort, descending, state.metadata)
+        val allSeries = remember(state.entries, sort, descending, state.metadata, state.localMangaByUrl) {
+            groupOfflineLibrary(state.entries, sort, descending, state.metadata).map { item ->
+                val localTitle = offlineMangaUrl(item.entries, item.key)
+                    ?.let(state.localMangaByUrl::get)
+                    ?.title
+                    ?.takeIf { it.isNotBlank() }
+                if (localTitle == null) item else item.copy(title = localTitle)
+            }
         }
         val selectedSeries = remember(allSeries, seriesKey) { allSeries.firstOrNull { it.key == seriesKey } }
+        val selectedSeriesManga = selectedSeries?.let { item ->
+            offlineMangaUrl(item.entries, item.key)?.let(state.localMangaByUrl::get)
+        }
         val filteredIdentities = filtered.mapTo(hashSetOf()) { it.identity }
         val visibleEntries = if (showSeriesDetails) {
             selectedSeries?.entries?.filter { it.identity in filteredIdentities }.orEmpty()
@@ -293,6 +325,22 @@ class LocalArchiveScreen(
                                 imageVector = if (searchVisible) Icons.Outlined.Close else Icons.Outlined.Search,
                                 contentDescription = stringResource(if (searchVisible) MR.strings.action_close else MR.strings.action_search),
                             )
+                        }
+                        if (showSeriesDetails && selectedSeries != null) {
+                            IconButton(
+                                onClick = {
+                                    metadataSearchQuery = selectedSeriesManga?.title
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: selectedSeries.title
+                                    showMetadataSearchDialog = true
+                                },
+                                enabled = state.opening == null,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.TravelExplore,
+                                    contentDescription = stringResource(KMR.strings.action_search_metadata_from_extensions),
+                                )
+                            }
                         }
                         // KMK <--
                         if (showSeries) {
@@ -451,7 +499,19 @@ class LocalArchiveScreen(
                     ) {
                         if (continuing.isNotEmpty()) {
                             item(key = "continue-reading", span = { GridItemSpan(maxLineSpan) }) {
-                                ContinueReadingShelf(continuing, state.progress, favorites, toggleFavorite, open, state.opening == null, model, state.revision)
+                                ContinueReadingShelf(
+                                    continuing,
+                                    state.progress,
+                                    favorites,
+                                    toggleFavorite,
+                                    open,
+                                    state.opening == null,
+                                    model,
+                                    state.revision,
+                                    // KMK -->
+                                    mangaByUrl = state.localMangaByUrl,
+                                    // KMK <--
+                                )
                             }
                         }
                         items(series, key = { "series:${it.key}" }) { item ->
@@ -466,6 +526,9 @@ class LocalArchiveScreen(
                                 model = model,
                                 revision = state.revision,
                                 duplicateCopies = item.entries.count { it.identity in duplicateCounts },
+                                // KMK -->
+                                manga = offlineMangaUrl(item.entries, item.key)?.let(state.localMangaByUrl::get),
+                                // KMK <--
                             )
                         }
                         items(standaloneArchives, key = { "archive:${it.identity}" }) { entry ->
@@ -479,6 +542,9 @@ class LocalArchiveScreen(
                                 model,
                                 state.revision,
                                 duplicateCopies = duplicateCounts[entry.identity] ?: 0,
+                                // KMK -->
+                                manga = offlineMangaUrl(listOf(entry))?.let(state.localMangaByUrl::get),
+                                // KMK <--
                             )
                         }
                     }
@@ -492,7 +558,9 @@ class LocalArchiveScreen(
                                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    ArchiveCover(selectedSeries.firstEntry, model, state.revision, Modifier.width(96.dp))
+                                    // KMK -->
+                                    LocalArchiveCover(selectedSeries.firstEntry, model, state.revision, selectedSeriesManga, Modifier.width(96.dp))
+                                    // KMK <--
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
                                         Text(selectedSeries.title, style = MaterialTheme.typography.titleMedium)
                                         val readCount = selectedSeries.entries.count { state.progress[it.path]?.completed == true }
@@ -514,7 +582,19 @@ class LocalArchiveScreen(
                         // KMK <--
                         if (showSeries && continuing.isNotEmpty()) {
                             item(key = "continue-reading") {
-                                ContinueReadingShelf(continuing, state.progress, favorites, toggleFavorite, open, state.opening == null, model, state.revision)
+                                ContinueReadingShelf(
+                                    continuing,
+                                    state.progress,
+                                    favorites,
+                                    toggleFavorite,
+                                    open,
+                                    state.opening == null,
+                                    model,
+                                    state.revision,
+                                    // KMK -->
+                                    mangaByUrl = state.localMangaByUrl,
+                                    // KMK <--
+                                )
                             }
                         }
                         if (showSeries) {
@@ -531,20 +611,37 @@ class LocalArchiveScreen(
                                             }
                                         }
                                     },
-                                    leadingContent = { ArchiveCover(item.firstEntry, model, state.revision, Modifier.width(48.dp)) },
+                                    leadingContent = {
+                                        val manga = offlineMangaUrl(item.entries, item.key)?.let(state.localMangaByUrl::get)
+                                        // KMK -->
+                                        LocalArchiveCover(item.firstEntry, model, state.revision, manga, Modifier.width(48.dp))
+                                        // KMK <--
+                                    },
                                     trailingContent = {
-                                        FavoriteButton(favoriteKeys.all { it in favorites }) { toggleSeriesFavorite(item) }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            FavoriteButton(favoriteKeys.all { it in favorites }) { toggleSeriesFavorite(item) }
+                                        }
                                     },
                                     modifier = Modifier.clickable(enabled = state.opening == null) { openSeries(item) },
                                 )
                             }
                             items(standaloneArchives, key = { "archive:${it.path}" }) { entry ->
                                 ListItem(
-                                    headlineContent = { Text(entry.title) },
+                                    headlineContent = {
+                                        val manga = offlineMangaUrl(listOf(entry))?.let(state.localMangaByUrl::get)
+                                        Text(manga?.title?.takeIf { it.isNotBlank() } ?: entry.title)
+                                    },
                                     supportingContent = { Text(archiveProgressLabel(state.progress[entry.path])) },
-                                    leadingContent = { ArchiveCover(entry, model, state.revision, Modifier.width(48.dp)) },
+                                    leadingContent = {
+                                        val manga = offlineMangaUrl(listOf(entry))?.let(state.localMangaByUrl::get)
+                                        // KMK -->
+                                        LocalArchiveCover(entry, model, state.revision, manga, Modifier.width(48.dp))
+                                        // KMK <--
+                                    },
                                     trailingContent = {
-                                        FavoriteButton(entry.file.uri.toString() in favorites) { toggleFavorite(entry) }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            FavoriteButton(entry.file.uri.toString() in favorites) { toggleFavorite(entry) }
+                                        }
                                     },
                                     modifier = Modifier.clickable(enabled = state.opening == null) { open(entry) },
                                 )
@@ -579,7 +676,11 @@ class LocalArchiveScreen(
                                             recursive -> FavoriteButton(entry.file.uri.toString() in favorites) { toggleFavorite(entry) }
                                             entry.isDirectory -> Icon(Icons.AutoMirrored.Outlined.NavigateNext, null)
                                             state.opening == entry.path -> CircularProgressIndicator(Modifier.size(24.dp))
-                                            entry.size > 0 -> Text(android.text.format.Formatter.formatShortFileSize(context, entry.size), style = MaterialTheme.typography.bodySmall)
+                                            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (entry.size > 0) {
+                                                    Text(android.text.format.Formatter.formatShortFileSize(context, entry.size), style = MaterialTheme.typography.bodySmall)
+                                                }
+                                            }
                                         }
                                     },
                                     modifier = Modifier.clickable(enabled = state.opening == null) {
@@ -592,11 +693,95 @@ class LocalArchiveScreen(
                 }
             }
         }
+
+        // KMK -->
+        if (showMetadataSearchDialog) {
+            fun submitMetadataSearch() {
+                val searchQuery = metadataSearchQuery.trim()
+                val targetSeries = selectedSeries ?: return
+                if (searchQuery.isEmpty()) return
+
+                showMetadataSearchDialog = false
+                fun openSearch(targetMangaId: Long) {
+                    navigator.push(
+                        GlobalSearchScreen(
+                            searchQuery = searchQuery,
+                            metadataTargetMangaId = targetMangaId,
+                        ),
+                    )
+                }
+
+                val existingManga = selectedSeriesManga
+                if (existingManga != null) {
+                    openSearch(existingManga.id)
+                } else {
+                    model.open(
+                        entry = targetSeries.firstEntry,
+                        siblingEntries = targetSeries.entries,
+                        seriesKey = targetSeries.key,
+                        seriesTitle = targetSeries.title,
+                        onOpen = { mangaId, _ -> openSearch(mangaId) },
+                    )
+                }
+            }
+
+            AlertDialog(
+                onDismissRequest = { showMetadataSearchDialog = false },
+                title = { Text(stringResource(KMR.strings.metadata_search_title)) },
+                text = {
+                    OutlinedTextField(
+                        value = metadataSearchQuery,
+                        onValueChange = { metadataSearchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text(stringResource(KMR.strings.metadata_search_query_label)) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                        supportingText = { Text(stringResource(KMR.strings.metadata_search_description)) },
+                        trailingIcon = if (metadataSearchQuery.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { metadataSearchQuery = "" }) {
+                                    Icon(
+                                        Icons.Outlined.Close,
+                                        contentDescription = stringResource(KMR.strings.metadata_search_clear_query),
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { submitMetadataSearch() }),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = metadataSearchQuery.isNotBlank() && state.opening == null,
+                        onClick = { submitMetadataSearch() },
+                    ) {
+                        Text(stringResource(KMR.strings.metadata_search_button))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showMetadataSearchDialog = false }) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+        // KMK <--
     }
 }
 
 @Composable
 internal fun ArchiveCover(entry: LocalArchiveEntry, model: LocalArchiveScreenModel, revision: Int, modifier: Modifier) {
+    // KMK -->
+    ArchiveCoverContent(entry, model, revision, modifier.aspectRatio(2f / 3f))
+    // KMK <--
+}
+
+// KMK -->
+@Composable
+internal fun ArchiveCoverContent(entry: LocalArchiveEntry, model: LocalArchiveScreenModel, revision: Int, modifier: Modifier) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val cover by produceState<String?>(null, entry.identity, revision, lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -605,7 +790,7 @@ internal fun ArchiveCover(entry: LocalArchiveEntry, model: LocalArchiveScreenMod
         }
     }
     Box(
-        modifier.aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.surfaceVariant),
+        modifier.clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Outlined.MenuBook, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -614,5 +799,6 @@ internal fun ArchiveCover(entry: LocalArchiveEntry, model: LocalArchiveScreenMod
         }
     }
 }
+// KMK <--
 
 // KMK <--

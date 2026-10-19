@@ -108,6 +108,7 @@ abstract class SearchScreenModel(
     fun shouldPinnedSourcesHidden() {
         if (!hasPinnedSources()) {
             preferences.globalSearchPinnedState().set(SourceFilter.All)
+            mutableState.update { it.copy(sourceFilter = SourceFilter.All) }
         }
     }
     // KMK <--
@@ -135,6 +136,9 @@ abstract class SearchScreenModel(
 
     fun setSourceFilter(filter: SourceFilter) {
         preferences.globalSearchPinnedState().set(filter)
+        // KMK -->
+        mutableState.update { it.copy(sourceFilter = filter) }
+        // KMK <--
         search()
     }
 

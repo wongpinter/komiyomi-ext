@@ -1,5 +1,8 @@
 package eu.kanade.domain
 
+import eu.kanade.domain.manga.interactor.ApplyExtensionMetadataToLocalManga
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.tachiyomi.data.cache.CoverCache
 import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorRepositoryImpl
 import tachiyomi.data.libraryUpdateError.LibraryUpdateErrorWithRelationsRepositoryImpl
 import tachiyomi.data.libraryUpdateErrorMessage.LibraryUpdateErrorMessageRepositoryImpl
@@ -13,6 +16,9 @@ import tachiyomi.domain.libraryUpdateErrorMessage.interactor.DeleteLibraryUpdate
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.GetLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.interactor.InsertLibraryUpdateErrorMessages
 import tachiyomi.domain.libraryUpdateErrorMessage.repository.LibraryUpdateErrorMessageRepository
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.SetCustomMangaInfo
+import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addFactory
@@ -36,5 +42,17 @@ class KMKDomainModule : InjektModule {
         addFactory { GetLibraryUpdateErrors(get()) }
         addFactory { DeleteLibraryUpdateErrors(get()) }
         addFactory { InsertLibraryUpdateErrors(get()) }
+
+        // KMK -->
+        addFactory {
+            ApplyExtensionMetadataToLocalManga(
+                get<GetManga>(),
+                get<UpdateManga>(),
+                get<SourceManager>(),
+                get<SetCustomMangaInfo>(),
+                get<CoverCache>(),
+            )
+        }
+        // KMK <--
     }
 }

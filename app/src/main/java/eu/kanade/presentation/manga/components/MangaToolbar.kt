@@ -5,6 +5,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FlipToBack
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.surfaceColorAtElevation
@@ -55,6 +56,8 @@ fun MangaToolbar(
     onClickSourceSettings: (() -> Unit)?,
     onClearManga: () -> Unit,
     onOpenMangaFolder: (() -> Unit)?,
+    onClickSearchMetadata: (() -> Unit)?,
+    onClickApplyMetadata: (() -> Unit)?,
     // KMK <--
     onClickRecommend: (() -> Unit)?,
     onClickMerge: (() -> Unit)?,
@@ -146,6 +149,19 @@ fun MangaToolbar(
                             ),
                         )
                     }
+                    // KMK -->
+                    if (onClickSearchMetadata != null) {
+                        add(
+                            AppBar.Action(
+                                title = stringResource(KMR.strings.action_search_metadata_from_extensions),
+                                // KMK -->
+                                icon = Icons.Outlined.TravelExplore,
+                                // KMK <--
+                                onClick = onClickSearchMetadata,
+                            ),
+                        )
+                    }
+                    // KMK <--
                     add(
                         AppBar.Action(
                             title = stringResource(MR.strings.action_filter),
@@ -235,6 +251,14 @@ fun MangaToolbar(
                     }
                     // SY <--
                     // KMK -->
+                    if (onClickApplyMetadata != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(KMR.strings.action_apply_extension_metadata),
+                                onClick = onClickApplyMetadata,
+                            ),
+                        )
+                    }
                     if (onOpenMangaFolder != null) {
                         add(
                             AppBar.OverflowAction(

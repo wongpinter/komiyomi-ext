@@ -40,6 +40,7 @@ import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.chapter.service.ChapterRecognition
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.GetMangaBySource
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
@@ -65,6 +66,9 @@ class LocalArchiveScreenModel(
     private val path: String,
     fileSystem: LocalSourceFileSystem = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
+    // KMK -->
+    private val getMangaBySource: GetMangaBySource = Injekt.get(),
+    // KMK <--
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val getChapters: GetChaptersByMangaId = Injekt.get(),
     private val chapterRepository: ChapterRepository = Injekt.get(),
@@ -110,6 +114,19 @@ class LocalArchiveScreenModel(
         progressJob?.cancel()
         progressJob = null
     }
+
+    // KMK -->
+    suspend fun refreshLocalMangaMetadata() {
+        try {
+            val mangas = withIOContext { getMangaBySource.await(LocalSource.ID) }
+            mutableState.update { it.copy(localMangaByUrl = mangas.associateBy { manga -> manga.url }) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            xLogE("Unable to refresh local manga metadata", e)
+        }
+    }
+    // KMK <--
 
     fun refresh() {
         loadCatalog(useCache = false)
@@ -449,11 +466,7 @@ class LocalArchiveScreenModel(
                     // KMK -->
                     val parentPaths = entries.map { it.parentPath }.distinct()
                     val syntheticSeries = parentPaths.size > 1 || seriesKey?.startsWith("comicinfo:") == true
-                    val mangaPath = when {
-                        syntheticSeries -> "offline-series:${seriesKey.orEmpty()}"
-                        parentPaths.singleOrNull().orEmpty().isNotEmpty() -> parentPaths.single()
-                        else -> entry.path
-                    }
+                    val mangaPath = checkNotNull(offlineMangaUrl(entries, seriesKey))
                     val mangaTitle = seriesTitle
                         ?: state.value.metadata[entry.identity]?.series?.takeIf { it.isNotBlank() }
                         ?: entry.parentPath.substringAfterLast('/').ifEmpty { entry.title }
@@ -560,6 +573,9 @@ class LocalArchiveScreenModel(
         val metadataProcessed: Int = 0,
         val metadataTotal: Int = 0,
         val lastScannedAt: Long = 0L,
+        // KMK -->
+        val localMangaByUrl: Map<String, tachiyomi.domain.manga.model.Manga> = emptyMap(),
+        // KMK <--
         // KMK <--
     )
 

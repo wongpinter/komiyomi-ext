@@ -210,9 +210,13 @@ class LocalSource(
 
     // Manga details related
     private suspend fun getMangaDetails(manga: SManga): SManga = withIOContext {
-        coverManager.find(manga.url)?.let {
-            manga.thumbnail_url = it.uri.toString()
+        // KMK -->
+        if (manga.thumbnail_url.isNullOrBlank()) {
+            coverManager.find(manga.url)?.let {
+                manga.thumbnail_url = it.uri.toString()
+            }
         }
+        // KMK <--
 
         // KMK -->
         val standaloneArchive = fileSystem.resolveFile(manga.url)

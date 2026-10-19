@@ -28,6 +28,7 @@ import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
+import eu.kanade.domain.manga.interactor.ApplyExtensionMetadataToLocalManga
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.GetPagePreviews
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
@@ -740,6 +741,11 @@ class MangaScreenModel(
     }
 
     // KMK -->
+    suspend fun applyMetadataToLocalManga(targetMangaId: Long): Result<Unit> {
+        val state = successState ?: return Result.failure(IllegalStateException("Extension manga details are unavailable"))
+        return Injekt.get<ApplyExtensionMetadataToLocalManga>().await(targetMangaId, state.manga, state.source)
+    }
+
     @Composable
     fun getManga(initialManga: Manga): RuntimeState<Manga> {
         return produceState(initialValue = initialManga) {

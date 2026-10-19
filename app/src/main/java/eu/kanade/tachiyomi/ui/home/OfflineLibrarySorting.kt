@@ -27,6 +27,20 @@ internal data class OfflineArchiveSeries(
     val lastModified: Long get() = entries.maxOf { it.modified }
 }
 
+// KMK -->
+internal fun offlineMangaUrl(entries: List<LocalArchiveEntry>, seriesKey: String? = null): String? {
+    if (entries.isEmpty()) return null
+
+    val parentPaths = entries.map { it.parentPath }.distinct()
+    val syntheticSeries = parentPaths.size > 1 || seriesKey?.startsWith("comicinfo:") == true
+    return when {
+        syntheticSeries -> "offline-series:${seriesKey.orEmpty()}"
+        parentPaths.singleOrNull().orEmpty().isNotEmpty() -> parentPaths.single()
+        else -> entries.first().path
+    }
+}
+// KMK <--
+
 internal fun groupOfflineLibrary(
     entries: List<LocalArchiveEntry>,
     sort: OfflineLibrarySort,

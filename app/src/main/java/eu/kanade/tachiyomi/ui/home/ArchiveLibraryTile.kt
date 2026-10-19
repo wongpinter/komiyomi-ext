@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -25,9 +28,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil3.compose.SubcomposeAsyncImage
 import tachiyomi.domain.chapter.model.ArchiveReadingProgress
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.source.local.io.LocalArchiveEntry
@@ -51,6 +57,34 @@ internal fun archiveProgressLabel(progress: ArchiveReadingProgress?): String = w
     else -> stringResource(KMR.strings.offline_page_number, progress.lastPage + 1)
 }
 
+// KMK -->
+@Composable
+internal fun LocalArchiveCover(
+    entry: LocalArchiveEntry,
+    model: LocalArchiveScreenModel,
+    revision: Int,
+    manga: Manga?,
+    modifier: Modifier = Modifier,
+) {
+    if (manga == null) {
+        ArchiveCover(entry, model, revision, modifier)
+    } else {
+        SubcomposeAsyncImage(
+            model = manga,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.aspectRatio(2f / 3f).clip(MaterialTheme.shapes.small),
+            loading = {
+                ArchiveCoverContent(entry, model, revision, Modifier.fillMaxSize())
+            },
+            error = {
+                ArchiveCoverContent(entry, model, revision, Modifier.fillMaxSize())
+            },
+        )
+    }
+}
+// KMK <--
+
 @Composable
 internal fun ArchiveLibraryTile(
     entry: LocalArchiveEntry,
@@ -65,13 +99,25 @@ internal fun ArchiveLibraryTile(
     // KMK -->
     duplicateCopies: Int = 0,
     // KMK <--
+    // KMK -->
+    manga: Manga? = null,
+    // KMK <--
 ) {
     Column(modifier.clickable(enabled = enabled, onClick = onOpen)) {
         Box {
-            ArchiveCover(entry, model, revision, Modifier.fillMaxWidth())
-            FavoriteButton(favorite, Modifier.align(Alignment.TopEnd).padding(4.dp), onFavorite)
+            // KMK -->
+            LocalArchiveCover(entry, model, revision, manga, Modifier.fillMaxWidth())
+            // KMK <--
+            Row(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                FavoriteButton(favorite, onClick = onFavorite)
+            }
         }
-        Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+        Text(
+            manga?.title?.takeIf { it.isNotBlank() } ?: entry.title,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleSmall,
+        )
         if (entry.parentPath.isNotEmpty()) {
             Text(entry.parentPath, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -101,11 +147,18 @@ internal fun ArchiveSeriesTile(
     // KMK -->
     duplicateCopies: Int = 0,
     // KMK <--
+    // KMK -->
+    manga: Manga? = null,
+    // KMK <--
 ) {
     Column(modifier.clickable(enabled = enabled, onClick = onOpen)) {
         Box {
-            ArchiveCover(series.firstEntry, model, revision, Modifier.fillMaxWidth())
-            FavoriteButton(favorite, Modifier.align(Alignment.TopEnd).padding(4.dp), onFavorite)
+            // KMK -->
+            LocalArchiveCover(series.firstEntry, model, revision, manga, Modifier.fillMaxWidth())
+            // KMK <--
+            Row(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                FavoriteButton(favorite, onClick = onFavorite)
+            }
         }
         Text(series.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
         Text(
@@ -131,12 +184,28 @@ internal fun ContinueReadingShelf(
     enabled: Boolean,
     model: LocalArchiveScreenModel,
     revision: Int,
+    // KMK -->
+    mangaByUrl: Map<String, Manga> = emptyMap(),
+    // KMK <--
 ) {
     Column {
         Text(stringResource(KMR.strings.offline_continue_reading), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(entries, key = { it.path }) { entry ->
-                ArchiveLibraryTile(entry, progress[entry.path], entry.file.uri.toString() in favorites, { onFavorite(entry) }, { onOpen(entry) }, enabled, model, revision, Modifier.width(128.dp))
+                ArchiveLibraryTile(
+                    entry,
+                    progress[entry.path],
+                    entry.file.uri.toString() in favorites,
+                    { onFavorite(entry) },
+                    { onOpen(entry) },
+                    enabled,
+                    model,
+                    revision,
+                    Modifier.width(128.dp),
+                    // KMK -->
+                    manga = offlineMangaUrl(listOf(entry))?.let(mangaByUrl::get),
+                    // KMK <--
+                )
             }
         }
     }

@@ -7,7 +7,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -18,12 +20,23 @@ import eu.kanade.presentation.browse.components.BulkFavoriteDialogs
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.browse.BulkFavoriteScreenModel
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
+import eu.kanade.tachiyomi.ui.home.HomeScreen
+import eu.kanade.tachiyomi.ui.home.LocalArchiveScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
+import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
+import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class GlobalSearchScreen(
     val searchQuery: String = "",
     private val extensionFilter: String? = null,
+    // KMK -->
+    private val metadataTargetMangaId: Long? = null,
+    // KMK <--
 ) : Screen() {
 
     @Composable
@@ -42,8 +55,15 @@ class GlobalSearchScreen(
             )
         }
         val state by screenModel.state.collectAsState()
+        // KMK -->
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        var metadataApplying by remember { mutableStateOf(false) }
+        // KMK <--
         var showSingleLoadingScreen by remember {
-            mutableStateOf(searchQuery.isNotEmpty() && !extensionFilter.isNullOrEmpty() && state.total == 1)
+            // KMK -->
+            mutableStateOf(metadataTargetMangaId == null && searchQuery.isNotEmpty() && !extensionFilter.isNullOrEmpty() && state.total == 1)
+            // KMK <--
         }
 
         // KMK -->
@@ -57,7 +77,10 @@ class GlobalSearchScreen(
         }
         // KMK <--
 
-        if (showSingleLoadingScreen) {
+        // KMK -->
+        if (metadataApplying) {
+            LoadingScreen()
+        } else if (showSingleLoadingScreen) {
             LoadingScreen()
 
             LaunchedEffect(state.items) {
@@ -66,7 +89,15 @@ class GlobalSearchScreen(
                     is SearchItemResult.Success -> {
                         val manga = result.result.singleOrNull()
                         if (manga != null) {
-                            navigator.replace(MangaScreen(manga.id, true))
+                            navigator.replace(
+                                MangaScreen(
+                                    mangaId = manga.id,
+                                    fromSource = true,
+                                    // KMK -->
+                                    metadataTargetMangaId = metadataTargetMangaId,
+                                    // KMK <--
+                                ),
+                            )
                         } else {
                             // Backoff to result screen
                             showSingleLoadingScreen = false
@@ -91,9 +122,55 @@ class GlobalSearchScreen(
                     // KMK -->
                     if (bulkFavoriteState.selectionMode) {
                         bulkFavoriteScreenModel.toggleSelection(manga)
+                    } else if (metadataTargetMangaId != null) {
+                        if (!metadataApplying) {
+                            metadataApplying = true
+                            scope.launch {
+                                try {
+                                    screenModel.applyMetadataToLocalManga(metadataTargetMangaId, manga)
+                                        .onSuccess {
+                                            context.toast(KMR.strings.local_manga_metadata_updated)
+                                            if (
+                                                navigator.items.any {
+                                                    it is MangaScreen && it.isShowingManga(metadataTargetMangaId)
+                                                }
+                                            ) {
+                                                navigator.popUntil {
+                                                    it is MangaScreen && it.isShowingManga(metadataTargetMangaId)
+                                                }
+                                            } else {
+                                                navigator.popUntil { it is LocalArchiveScreen || it is HomeScreen }
+                                            }
+                                        }
+                                        .onFailure { error ->
+                                            logcat(LogPriority.ERROR, error) {
+                                                "Failed to save extension metadata to local manga $metadataTargetMangaId"
+                                            }
+                                            metadataApplying = false
+                                            context.toast(KMR.strings.local_manga_metadata_update_failed)
+                                        }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    logcat(LogPriority.ERROR, e) {
+                                        "Failed to save extension metadata to local manga $metadataTargetMangaId"
+                                    }
+                                    metadataApplying = false
+                                    context.toast(KMR.strings.local_manga_metadata_update_failed)
+                                }
+                            }
+                        }
                     } else {
                         // KMK <--
-                        navigator.push(MangaScreen(manga.id, true))
+                        navigator.push(
+                            MangaScreen(
+                                mangaId = manga.id,
+                                fromSource = true,
+                                // KMK -->
+                                metadataTargetMangaId = metadataTargetMangaId,
+                                // KMK <--
+                            ),
+                        )
                     }
                 },
                 onLongClickItem = { manga ->
@@ -102,15 +179,25 @@ class GlobalSearchScreen(
                         bulkFavoriteScreenModel.addRemoveManga(manga, haptic)
                     } else {
                         // KMK <--
-                        navigator.push(MangaScreen(manga.id, true))
+                        navigator.push(
+                            MangaScreen(
+                                mangaId = manga.id,
+                                fromSource = true,
+                                // KMK -->
+                                metadataTargetMangaId = metadataTargetMangaId,
+                                // KMK <--
+                            ),
+                        )
                     }
                 },
                 // KMK -->
+                metadataSelectionMode = metadataTargetMangaId != null,
                 bulkFavoriteScreenModel = bulkFavoriteScreenModel,
                 hasPinnedSources = screenModel.hasPinnedSources(),
                 // KMK <--
             )
         }
+        // KMK <--
 
         // KMK -->
         BulkFavoriteDialogs(

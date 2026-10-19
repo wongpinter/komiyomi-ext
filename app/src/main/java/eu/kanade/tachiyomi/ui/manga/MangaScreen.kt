@@ -8,8 +8,20 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -26,6 +38,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -74,6 +87,7 @@ import eu.kanade.tachiyomi.ui.browse.source.feed.SourceFeedScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
+import eu.kanade.tachiyomi.ui.home.LocalArchiveScreen
 import eu.kanade.tachiyomi.ui.manga.merged.EditMergedSettingsDialog
 import eu.kanade.tachiyomi.ui.manga.notes.MangaNotesScreen
 import eu.kanade.tachiyomi.ui.manga.track.TrackInfoDialogHomeScreen
@@ -116,6 +130,7 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import tachiyomi.i18n.sy.SYMR
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -129,11 +144,18 @@ class MangaScreen(
      */
     val fromSource: Boolean = false,
     private val smartSearchConfig: SourcesScreen.SmartSearchConfig? = null,
+    // KMK -->
+    private val metadataTargetMangaId: Long? = null,
+    // KMK <--
 ) : Screen(), AssistContentScreen {
 
     private var assistUrl: String? = null
 
     override fun onProvideAssistUrl() = assistUrl
+
+    // KMK -->
+    internal fun isShowingManga(id: Long): Boolean = mangaId == id
+    // KMK <--
 
     @Composable
     override fun Content() {
@@ -261,6 +283,10 @@ class MangaScreen(
         val coverRatio = remember { mutableFloatStateOf(1f) }
         val hazeState = remember { HazeState() }
         val fullCoverBackground = MaterialTheme.colorScheme.surfaceTint.blend(MaterialTheme.colorScheme.surface)
+        var showMetadataSearchDialog by rememberSaveable { mutableStateOf(false) }
+        var metadataSearchQuery by rememberSaveable(successState.manga.id) {
+            mutableStateOf(successState.manga.title)
+        }
 
         val isHentaiEnabled: Boolean = Injekt.get<ExhPreferences>().isHentaiEnabled().get()
         val isConfigurableSource = successState.source.anyIs<ConfigurableSource>() ||
@@ -461,8 +487,109 @@ class MangaScreen(
             coverRatio = coverRatio,
             onPaletteScreenClick = { navigator.push(PaletteScreen(successState.seedColor?.toArgb())) },
             hazeState = hazeState,
+            // KMK -->
+            onClickSearchMetadata = {
+                metadataSearchQuery = successState.manga.title
+                showMetadataSearchDialog = true
+            }.takeIf {
+                successState.manga.source == tachiyomi.source.local.LocalSource.ID
+            },
+            onClickApplyMetadata = {
+                val targetMangaId = metadataTargetMangaId
+                if (targetMangaId != null) {
+                    scope.launch {
+                        screenModel.applyMetadataToLocalManga(targetMangaId)
+                            .onSuccess {
+                                context.toast(KMR.strings.local_manga_metadata_updated)
+                                if (
+                                    navigator.items.any {
+                                        it is MangaScreen && it.isShowingManga(targetMangaId)
+                                    }
+                                ) {
+                                    navigator.popUntil {
+                                        it is MangaScreen && it.isShowingManga(targetMangaId)
+                                    }
+                                } else {
+                                    navigator.popUntil { it is LocalArchiveScreen || it is HomeScreen }
+                                }
+                            }
+                            .onFailure {
+                                logcat(LogPriority.ERROR, it) {
+                                    "Failed to apply extension metadata to local manga"
+                                }
+                                context.toast(KMR.strings.local_manga_metadata_update_failed)
+                            }
+                    }
+                }
+            }.takeIf {
+                metadataTargetMangaId != null &&
+                    metadataTargetMangaId != successState.manga.id &&
+                    !successState.source.isLocalOrStub()
+            },
             // KMK <--
         )
+
+        // KMK -->
+        if (showMetadataSearchDialog) {
+            fun submitMetadataSearch() {
+                val query = metadataSearchQuery.trim()
+                if (query.isEmpty()) return
+
+                showMetadataSearchDialog = false
+                navigator.push(
+                    GlobalSearchScreen(
+                        searchQuery = query,
+                        metadataTargetMangaId = successState.manga.id,
+                    ),
+                )
+            }
+
+            AlertDialog(
+                onDismissRequest = { showMetadataSearchDialog = false },
+                title = { Text(stringResource(KMR.strings.metadata_search_title)) },
+                text = {
+                    OutlinedTextField(
+                        value = metadataSearchQuery,
+                        onValueChange = { metadataSearchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text(stringResource(KMR.strings.metadata_search_query_label)) },
+                        leadingIcon = {
+                            Icon(imageVector = Icons.Outlined.Search, contentDescription = null)
+                        },
+                        supportingText = {
+                            Text(stringResource(KMR.strings.metadata_search_description))
+                        },
+                        trailingIcon = {
+                            if (metadataSearchQuery.isNotEmpty()) {
+                                IconButton(onClick = { metadataSearchQuery = "" }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = stringResource(KMR.strings.metadata_search_clear_query),
+                                    )
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { submitMetadataSearch() }),
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = metadataSearchQuery.isNotBlank(),
+                        onClick = { submitMetadataSearch() },
+                    ) {
+                        Text(stringResource(KMR.strings.metadata_search_button))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showMetadataSearchDialog = false }) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
+                },
+            )
+        }
+        // KMK <--
 
         var showScanlatorsDialog by remember { mutableStateOf(false) }
 
