@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -43,6 +44,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import exh.log.xLogE
 import exh.log.xLogI
 import kotlinx.coroutines.CancellationException
@@ -50,6 +52,10 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.preferences.ReadingProgression
@@ -58,11 +64,14 @@ import org.readium.r2.shared.util.AbsoluteUrl
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Full-screen EPUB library and reader interface, isolated from the manga reader. */
 class EbookActivity : BaseActivity() {
+    private val readerPreferences = Injekt.get<ReaderPreferences>()
     private lateinit var model: EpubViewModel
     private lateinit var container: FragmentContainerView
     private lateinit var libraryHost: ComposeView
@@ -86,6 +95,7 @@ class EbookActivity : BaseActivity() {
     private var currentProgress by mutableFloatStateOf(0f)
     private var currentPdfPage by mutableIntStateOf(0)
     private var pdfHudVisible by mutableStateOf(false)
+    private var ebookSettingsVisible by mutableStateOf(false)
     private var bookDetailsDialog: BottomSheetDialog? = null
     private var bookDetailsLoadJob: Job? = null
     private var bookDetailsUi by mutableStateOf<BookDetailsUi?>(null)
@@ -154,6 +164,15 @@ class EbookActivity : BaseActivity() {
             supportFragmentManager.beginTransaction().remove(it).commitNow()
         }
         model = ViewModelProvider(this)[EpubViewModel::class.java]
+        combine(
+            readerPreferences.keepScreenOn().changes(),
+            model.state,
+        ) { keepScreenOn, state ->
+            keepScreenOn && (state is EpubViewModel.State.Ready || state is EpubViewModel.State.PdfReady)
+        }
+            .distinctUntilChanged()
+            .onEach(::setKeepScreenOn)
+            .launchIn(lifecycleScope)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val root = FrameLayout(this)
         container = FragmentContainerView(this).apply {
@@ -170,30 +189,43 @@ class EbookActivity : BaseActivity() {
                 val folderSources by model.folderSources.collectAsState()
                 val loading by model.libraryLoading.collectAsState()
                 val libraryError by model.libraryError.collectAsState()
-                EpubLibraryScreen(
-                    state = state,
-                    books = books,
-                    libraryLoading = loading,
-                    libraryError = libraryError,
-                    folderSources = folderSources,
-                    shelfSettings = model.shelfSettings(),
-                    onShelfSettingsChange = model::saveShelfSettings,
-                    onImport = ::launchBookPicker,
-                    onAddFolder = ::launchFolderPicker,
-                    onScanFolders = model::scanFolderSources,
-                    onRemoveFolder = model::removeFolderSource,
-                    onOpen = model::openBook,
-                    onRemove = ::confirmRemoveBook,
-                    onRemoveAll = ::confirmRemoveAll,
-                    onExit = ::finish,
-                    onRetry = {
-                        model.clearFailure()
-                        model.refreshLibrary()
-                    },
-                    onCancelImport = model::cancelImport,
-                    onDetails = ::showShelfBookDetails,
-                    loadCover = model::coverFor,
-                )
+                if (ebookSettingsVisible) {
+                    EbookSettingsContent(
+                        readerDefaults = model.ebookReaderDefaults(),
+                        shelfSettings = model.shelfSettings(),
+                        keepScreenOn = readerPreferences.keepScreenOn().get(),
+                        onReaderDefaultsChange = model::saveEbookReaderDefaults,
+                        onShelfSettingsChange = model::saveShelfSettings,
+                        onKeepScreenOnChange = { readerPreferences.keepScreenOn().set(it) },
+                        onBack = { ebookSettingsVisible = false },
+                    )
+                } else {
+                    EpubLibraryScreen(
+                        state = state,
+                        books = books,
+                        libraryLoading = loading,
+                        libraryError = libraryError,
+                        folderSources = folderSources,
+                        shelfSettings = model.shelfSettings(),
+                        onShelfSettingsChange = model::saveShelfSettings,
+                        onImport = ::launchBookPicker,
+                        onAddFolder = ::launchFolderPicker,
+                        onSettings = { ebookSettingsVisible = true },
+                        onScanFolders = model::scanFolderSources,
+                        onRemoveFolder = model::removeFolderSource,
+                        onOpen = model::openBook,
+                        onRemove = ::confirmRemoveBook,
+                        onRemoveAll = ::confirmRemoveAll,
+                        onExit = ::finish,
+                        onRetry = {
+                            model.clearFailure()
+                            model.refreshLibrary()
+                        },
+                        onCancelImport = model::cancelImport,
+                        onDetails = ::showShelfBookDetails,
+                        loadCover = model::coverFor,
+                    )
+                }
             }
         }
         root.addView(libraryHost, FrameLayout.LayoutParams(-1, -1))
@@ -306,6 +338,7 @@ class EbookActivity : BaseActivity() {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     when {
+                        ebookSettingsVisible -> ebookSettingsVisible = false
                         // KMK -->
                         ready != null && !controlsVisible -> updateReaderControls(true)
                         // KMK <--
@@ -1016,6 +1049,14 @@ class EbookActivity : BaseActivity() {
                 isAppearanceLightNavigationBars = useDarkSystemBarIcons
             }
             if (showSystemBars) show(WindowInsetsCompat.Type.systemBars()) else hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    private fun setKeepScreenOn(enabled: Boolean) {
+        if (enabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 

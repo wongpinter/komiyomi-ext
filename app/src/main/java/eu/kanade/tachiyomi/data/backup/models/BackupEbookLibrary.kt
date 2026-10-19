@@ -9,6 +9,7 @@ data class BackupEbookLibrary(
     @ProtoNumber(1) val books: List<BackupEbook> = emptyList(),
     @ProtoNumber(2) val folderSources: List<BackupEbookFolderSource> = emptyList(),
     @ProtoNumber(3) val shelfSettings: BackupEbookShelfSettings = BackupEbookShelfSettings(),
+    @ProtoNumber(4) val readerDefaults: BackupEbookReaderSettings? = null,
 )
 
 @Serializable
@@ -59,5 +60,18 @@ data class BackupEbookShelfSettings(
     @ProtoNumber(4) val descending: Boolean = true,
     @ProtoNumber(5) val layout: String = "GRID",
     @ProtoNumber(6) val coverSize: Int = 96,
+)
+
+@Serializable
+data class BackupEbookReaderSettings(
+    @ProtoNumber(1) val epubTheme: String = "SEPIA",
+    @ProtoNumber(2) val epubFontFamily: String? = null,
+    @ProtoNumber(3) val epubFontSize: Double = 1.0,
+    @ProtoNumber(4) val epubScroll: Boolean = true,
+    @ProtoNumber(5) val pdfLayout: String = "CONTINUOUS",
+    @ProtoNumber(6) val pdfFit: String = "WIDTH",
+    @ProtoNumber(7) val pdfTrimMargins: Boolean = false,
+    @ProtoNumber(8) val pdfColor: String = "ORIGINAL",
+    @ProtoNumber(9) val pdfPageGapDp: Int = 8,
 )
 // KMK <--

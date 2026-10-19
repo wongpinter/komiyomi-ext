@@ -4,7 +4,9 @@
 package eu.kanade.tachiyomi.ui.ebook
 
 import android.graphics.Bitmap
+import android.graphics.Point
 import android.graphics.pdf.PdfRenderer
+import android.graphics.pdf.models.selection.SelectionBoundary
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
@@ -19,6 +21,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -108,6 +111,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -118,12 +122,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -152,6 +158,23 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import android.graphics.Color as AndroidColor
 
+internal data class PdfImageCrop(
+    val left: Int,
+    val top: Int,
+    val width: Int,
+    val height: Int,
+    val sourceWidth: Int,
+    val sourceHeight: Int,
+)
+
+private data class PdfTrimResult(val bitmap: Bitmap, val crop: PdfImageCrop)
+
+internal data class PdfTextRect(val left: Float, val top: Float, val right: Float, val bottom: Float)
+
+internal data class PdfTextSelection(val pageIndex: Int, val text: String, val bounds: List<PdfTextRect>)
+
+private enum class PdfSelectionMessage { UNSUPPORTED, NO_TEXT, FAILED }
+
 /** A small PDF session backed by Android's platform renderer with a bounded bitmap cache. */
 internal class PdfDocumentSession private constructor(
     private val descriptor: ParcelFileDescriptor,
@@ -170,8 +193,13 @@ internal class PdfDocumentSession private constructor(
     private val renderLock = Any()
     private val rendererMutex = Mutex()
     private var closed = false
+    private val pageCrops = mutableMapOf<PageKey, PdfImageCrop>()
     private val pageCache = object : LruCache<PageKey, Bitmap>(cacheBytes()) {
         override fun sizeOf(key: PageKey, value: Bitmap): Int = value.allocationByteCount
+
+        override fun entryRemoved(evicted: Boolean, key: PageKey, oldValue: Bitmap, newValue: Bitmap?) {
+            if (newValue == null) pageCrops.remove(key)
+        }
     }
 
     fun pageAspectRatio(index: Int): Float = synchronized(renderLock) {
@@ -222,8 +250,14 @@ internal class PdfDocumentSession private constructor(
             rendered.eraseColor(AndroidColor.WHITE)
             try {
                 page.render(rendered, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                val bitmap = if (trimMargins) trimWhitespace(rendered) else rendered
+                val trimmed = if (trimMargins) {
+                    trimWhitespace(rendered)
+                } else {
+                    PdfTrimResult(rendered, PdfImageCrop(0, 0, rendered.width, rendered.height, rendered.width, rendered.height))
+                }
+                val bitmap = trimmed.bitmap
                 if (bitmap !== rendered) rendered.recycle()
+                pageCrops[key] = trimmed.crop
                 pageCache.put(key, bitmap)
                 bitmap
             } catch (error: Throwable) {
@@ -264,6 +298,77 @@ internal class PdfDocumentSession private constructor(
         currentCoroutineContext().ensureActive()
     }
 
+    internal fun pageCrop(
+        index: Int,
+        requestedWidth: Int,
+        requestedHeight: Int,
+        fit: PdfFitMode,
+        trimMargins: Boolean,
+    ): PdfImageCrop? = synchronized(renderLock) {
+        val key = PageKey(
+            index = index,
+            width = requestedWidth.coerceIn(1, MAX_RENDER_WIDTH),
+            height = requestedHeight.coerceIn(0, MAX_RENDER_HEIGHT),
+            fit = fit,
+            trimMargins = trimMargins,
+        )
+        pageCrops[key]
+    }
+
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    internal suspend fun selectTextAt(index: Int, xFraction: Float, yFraction: Float): PdfTextSelection? =
+        selectText(index) { page ->
+            val point = Point(
+                (xFraction.coerceIn(0f, 1f) * page.width).roundToInt(),
+                (yFraction.coerceIn(0f, 1f) * page.height).roundToInt(),
+            )
+            val boundary = SelectionBoundary(point)
+            page.selectContent(boundary, boundary)
+        }
+
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    internal suspend fun selectPageText(index: Int): PdfTextSelection? =
+        selectText(index) { page ->
+            page.selectContent(
+                SelectionBoundary(Point(0, 0)),
+                SelectionBoundary(Point(page.width, page.height)),
+            )
+        }
+
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    private suspend fun selectText(
+        index: Int,
+        selection: (PdfRenderer.Page) -> Any?,
+    ): PdfTextSelection? = rendererMutex.withLock {
+        withContext(Dispatchers.IO) {
+            synchronized(renderLock) {
+                check(!closed) { "PDF session is closed" }
+                require(index in 0 until pageCount) { "PDF page index is out of range" }
+                renderer.openPage(index).use { page ->
+                    val pageSelection = selection(page) as? android.graphics.pdf.models.selection.PageSelection
+                        ?: return@synchronized null
+                    val textContents = pageSelection.selectedTextContents
+                    val text = textContents.joinToString(" ") { it.text.trim() }
+                        .replace(Regex("\\s+"), " ")
+                        .trim()
+                    if (text.isEmpty()) return@synchronized null
+                    val pageWidth = page.width.coerceAtLeast(1).toFloat()
+                    val pageHeight = page.height.coerceAtLeast(1).toFloat()
+                    val bounds = textContents.flatMap { it.bounds }.map { rect ->
+                        PdfTextRect(
+                            left = rect.left / pageWidth,
+                            top = rect.top / pageHeight,
+                            right = rect.right / pageWidth,
+                            bottom = rect.bottom / pageHeight,
+                        )
+                    }
+                    if (bounds.isEmpty()) return@synchronized null
+                    PdfTextSelection(index, text, bounds)
+                }
+            }
+        }
+    }
+
     override fun close() {
         synchronized(renderLock) {
             if (closed) return
@@ -298,7 +403,7 @@ internal class PdfDocumentSession private constructor(
         matchingPages
     }
 
-    private fun trimWhitespace(bitmap: Bitmap): Bitmap {
+    private fun trimWhitespace(bitmap: Bitmap): PdfTrimResult {
         val sampleStep = max(max(bitmap.width, bitmap.height) / 900, 1)
         var left = bitmap.width
         var top = bitmap.height
@@ -324,7 +429,7 @@ internal class PdfDocumentSession private constructor(
             }
             y += sampleStep
         }
-        if (!found) return bitmap
+        if (!found) return fullPage(bitmap)
         val horizontalPadding = (bitmap.width * CROP_PADDING).toInt()
         val verticalPadding = (bitmap.height * CROP_PADDING).toInt()
         left = (left - horizontalPadding).coerceAtLeast(0)
@@ -333,9 +438,17 @@ internal class PdfDocumentSession private constructor(
         bottom = (bottom + verticalPadding).coerceAtMost(bitmap.height - 1)
         val cropWidth = right - left + 1
         val cropHeight = bottom - top + 1
-        if (cropWidth >= bitmap.width * MIN_CROP_RATIO && cropHeight >= bitmap.height * MIN_CROP_RATIO) return bitmap
-        return Bitmap.createBitmap(bitmap, left, top, cropWidth, cropHeight)
+        if (cropWidth >= bitmap.width * MIN_CROP_RATIO && cropHeight >= bitmap.height * MIN_CROP_RATIO) return fullPage(bitmap)
+        return PdfTrimResult(
+            bitmap = Bitmap.createBitmap(bitmap, left, top, cropWidth, cropHeight),
+            crop = PdfImageCrop(left, top, cropWidth, cropHeight, bitmap.width, bitmap.height),
+        )
     }
+
+    private fun fullPage(bitmap: Bitmap) = PdfTrimResult(
+        bitmap = bitmap,
+        crop = PdfImageCrop(0, 0, bitmap.width, bitmap.height, bitmap.width, bitmap.height),
+    )
 
     companion object {
         private const val MAX_RENDER_WIDTH = 1_600
@@ -395,6 +508,9 @@ internal fun PdfReaderScreen(
     val pageAspectRatioStates = remember(session) { mutableMapOf<Int, MutableState<Float?>>() }
     var activeSheet by remember { mutableStateOf<PdfSheet?>(null) }
     var pageNavigationTab by remember(file) { mutableIntStateOf(1) }
+    var textSelection by remember(file) { mutableStateOf<PdfTextSelection?>(null) }
+    var selectionMessage by remember(file) { mutableStateOf<PdfSelectionMessage?>(null) }
+    var selectionRequestToken by remember(file) { mutableIntStateOf(0) }
 
     val currentPage by remember(settings.layout, verticalState, horizontalState, pageCount) {
         derivedStateOf {
@@ -414,6 +530,7 @@ internal fun PdfReaderScreen(
     }
     val widthPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
     val heightPx = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.roundToPx() }
+    val clipboardManager = LocalClipboardManager.current
     val colorFilter = remember(settings.color) { settings.color.toColorFilter() }
     val canvasColor = when (settings.color) {
         PdfColorMode.ORIGINAL -> Color(0xFF3A3A3A)
@@ -427,9 +544,60 @@ internal fun PdfReaderScreen(
         pageNavigationVisible = false
     }
 
-    BackHandler(enabled = pageNavigationVisible || !hudVisible) {
+    fun clearTextSelection() {
+        selectionRequestToken++
+        textSelection = null
+        selectionMessage = null
+    }
+
+    fun selectTextAt(pageIndex: Int, pagePoint: Offset) {
+        selectionRequestToken++
+        val requestToken = selectionRequestToken
+        textSelection = null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            selectionMessage = PdfSelectionMessage.UNSUPPORTED
+            return
+        }
+        selectionMessage = null
+        scope.launch {
+            try {
+                val selection = session.selectTextAt(pageIndex, pagePoint.x, pagePoint.y)
+                if (requestToken == selectionRequestToken) {
+                    textSelection = selection
+                    if (selection == null) selectionMessage = PdfSelectionMessage.NO_TEXT
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (requestToken == selectionRequestToken) selectionMessage = PdfSelectionMessage.FAILED
+            }
+        }
+    }
+
+    fun selectPageText(pageIndex: Int) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return
+        selectionRequestToken++
+        val requestToken = selectionRequestToken
+        selectionMessage = null
+        scope.launch {
+            try {
+                val selection = session.selectPageText(pageIndex)
+                if (requestToken == selectionRequestToken) {
+                    textSelection = selection
+                    if (selection == null) selectionMessage = PdfSelectionMessage.NO_TEXT
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                if (requestToken == selectionRequestToken) selectionMessage = PdfSelectionMessage.FAILED
+            }
+        }
+    }
+
+    BackHandler(enabled = pageNavigationVisible || textSelection != null || selectionMessage != null || !hudVisible) {
         when {
             pageNavigationVisible -> closePageNavigation()
+            textSelection != null || selectionMessage != null -> clearTextSelection()
             else -> hudVisible = true
         }
     }
@@ -448,6 +616,7 @@ internal fun PdfReaderScreen(
     }
     LaunchedEffect(currentPage) {
         currentZoom = 1f
+        if (textSelection?.pageIndex != currentPage) clearTextSelection()
     }
     LaunchedEffect(settings.layout, verticalState, horizontalState) {
         val listState = if (settings.layout == PdfLayoutMode.CONTINUOUS) verticalState else horizontalState
@@ -598,6 +767,10 @@ internal fun PdfReaderScreen(
     }
 
     fun handlePageTap(point: Offset, viewport: IntSize) {
+        if (textSelection != null || selectionMessage != null) {
+            clearTextSelection()
+            return
+        }
         val leftZone = point.x < viewport.width * 0.2f
         val rightZone = point.x > viewport.width * 0.8f
         when {
@@ -643,6 +816,8 @@ internal fun PdfReaderScreen(
                         shouldRenderPage = pageIndex in visiblePageIndices || pageIndex == currentPage,
                         aspectRatioState = pageAspectRatioStates.getOrPut(pageIndex) { mutableStateOf(null) },
                         onTap = ::handlePageTap,
+                        onTextLongPress = ::selectTextAt,
+                        selection = textSelection?.takeIf { it.pageIndex == pageIndex },
                         onZoomChanged = { if (pageIndex == currentPage) currentZoom = it },
                     )
                 }
@@ -669,6 +844,8 @@ internal fun PdfReaderScreen(
                         shouldRenderPage = pageIndex in visiblePageIndices || pageIndex == currentPage,
                         aspectRatioState = pageAspectRatioStates.getOrPut(pageIndex) { mutableStateOf(null) },
                         onTap = ::handlePageTap,
+                        onTextLongPress = ::selectTextAt,
+                        selection = textSelection?.takeIf { it.pageIndex == pageIndex },
                         onZoomChanged = { if (pageIndex == currentPage) currentZoom = it },
                     )
                 }
@@ -868,6 +1045,86 @@ internal fun PdfReaderScreen(
             }
         }
 
+        AnimatedVisibility(
+            visible = textSelection != null,
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .padding(horizontal = 12.dp, vertical = if (hudVisible) 150.dp else 16.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(120)),
+        ) {
+            textSelection?.let { selection ->
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    tonalElevation = 6.dp,
+                ) {
+                    Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
+                        Text(
+                            stringResource(KMR.strings.ebook_pdf_text_selection_title),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            selection.text,
+                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = { selectPageText(selection.pageIndex) }) {
+                                Text(stringResource(KMR.strings.ebook_pdf_text_selection_select_page))
+                            }
+                            TextButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(selection.text))
+                                    clearTextSelection()
+                                },
+                            ) {
+                                Text(stringResource(KMR.strings.ebook_pdf_text_selection_copy))
+                            }
+                            IconButton(onClick = ::clearTextSelection) {
+                                Icon(
+                                    Icons.Outlined.Close,
+                                    contentDescription = stringResource(KMR.strings.ebook_pdf_text_selection_dismiss),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = selectionMessage != null,
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, vertical = if (hudVisible) 150.dp else 24.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(120)),
+        ) {
+            val message = when (selectionMessage) {
+                PdfSelectionMessage.UNSUPPORTED -> stringResource(KMR.strings.ebook_pdf_text_selection_requires_android_15)
+                PdfSelectionMessage.NO_TEXT -> stringResource(KMR.strings.ebook_pdf_text_selection_no_text)
+                PdfSelectionMessage.FAILED -> stringResource(KMR.strings.ebook_pdf_text_selection_failed)
+                null -> ""
+            }
+            Surface(
+                color = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                shape = RoundedCornerShape(12.dp),
+                tonalElevation = 4.dp,
+            ) {
+                Text(message, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            }
+        }
+
         if (activeSheet == PdfSheet.SETTINGS) {
             ModalBottomSheet(onDismissRequest = { activeSheet = null }) {
                 PdfSettingsSheet(
@@ -953,6 +1210,8 @@ private fun PdfPage(
     shouldRenderPage: Boolean,
     aspectRatioState: MutableState<Float?>,
     onTap: (Offset, IntSize) -> Unit,
+    onTextLongPress: (Int, Offset) -> Unit,
+    selection: PdfTextSelection?,
     onZoomChanged: (Float) -> Unit = {},
 ) {
     var zoomScale by remember(session, pageIndex) { mutableFloatStateOf(1f) }
@@ -962,6 +1221,7 @@ private fun PdfPage(
     var pageState by remember(session, pageIndex, requestedWidth, requestedHeight, fit, trimMargins) {
         mutableStateOf<PdfPageState>(PdfPageState.Loading(knownAspectRatio ?: DEFAULT_PDF_PAGE_ASPECT_RATIO))
     }
+    val latestPageState by rememberUpdatedState(pageState)
     LaunchedEffect(session, pageIndex, requestedWidth, requestedHeight, fit, trimMargins, shouldRenderPage) {
         if (!shouldRenderPage || pageState is PdfPageState.Ready) return@LaunchedEffect
         var aspectRatio = pageState.aspectRatio
@@ -1024,9 +1284,25 @@ private fun PdfPage(
                     } while (event.changes.any { it.pressed })
                 }
             }
-            .pointerInput(session, pageIndex) {
+            .pointerInput(session, pageIndex, requestedWidth, requestedHeight, fit, trimMargins, fillViewport) {
                 detectTapGestures(
                     onTap = { point -> onTap(point, viewportSize) },
+                    onLongPress = { point ->
+                        val readyPage = latestPageState as? PdfPageState.Ready
+                        if (readyPage != null && viewportSize.width > 0 && viewportSize.height > 0) {
+                            val crop = session.pageCrop(pageIndex, requestedWidth, requestedHeight, fit, trimMargins)
+                                ?: PdfImageCrop(0, 0, readyPage.bitmap.width, readyPage.bitmap.height, readyPage.bitmap.width, readyPage.bitmap.height)
+                            point.toPdfPageFraction(
+                                viewport = viewportSize,
+                                bitmapWidth = readyPage.bitmap.width,
+                                bitmapHeight = readyPage.bitmap.height,
+                                fillViewport = fillViewport,
+                                zoomScale = zoomScale,
+                                translation = translation,
+                                crop = crop,
+                            )?.let { pagePoint -> onTextLongPress(pageIndex, pagePoint) }
+                        }
+                    },
                     onDoubleTap = { point ->
                         val resetting = zoomScale > 1.01f
                         zoomScale = if (resetting) 1f else 2f
@@ -1079,7 +1355,76 @@ private fun PdfPage(
             )
             is PdfPageState.Failed -> Text(stringResource(KMR.strings.ebook_pdf_page_failed), color = MaterialTheme.colorScheme.error)
         }
+        val readyPage = pageState as? PdfPageState.Ready
+        if (readyPage != null && selection != null) {
+            val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+            val crop = session.pageCrop(pageIndex, requestedWidth, requestedHeight, fit, trimMargins)
+                ?: PdfImageCrop(0, 0, readyPage.bitmap.width, readyPage.bitmap.height, readyPage.bitmap.width, readyPage.bitmap.height)
+            Canvas(
+                modifier = Modifier.fillMaxSize().then(zoomModifier),
+            ) {
+                val bitmapWidth = readyPage.bitmap.width.toFloat()
+                val bitmapHeight = readyPage.bitmap.height.toFloat()
+                val contentScale = if (fillViewport) {
+                    min(size.width / bitmapWidth, size.height / bitmapHeight)
+                } else {
+                    size.width / bitmapWidth
+                }
+                val imageWidth = bitmapWidth * contentScale
+                val imageHeight = bitmapHeight * contentScale
+                val imageLeft = (size.width - imageWidth) / 2f
+                val imageTop = (size.height - imageHeight) / 2f
+                selection.bounds.forEach { bounds ->
+                    val left = ((bounds.left * crop.sourceWidth - crop.left) / crop.width * bitmapWidth)
+                        .coerceIn(0f, bitmapWidth)
+                    val top = ((bounds.top * crop.sourceHeight - crop.top) / crop.height * bitmapHeight)
+                        .coerceIn(0f, bitmapHeight)
+                    val right = ((bounds.right * crop.sourceWidth - crop.left) / crop.width * bitmapWidth)
+                        .coerceIn(0f, bitmapWidth)
+                    val bottom = ((bounds.bottom * crop.sourceHeight - crop.top) / crop.height * bitmapHeight)
+                        .coerceIn(0f, bitmapHeight)
+                    if (right > left && bottom > top) {
+                        drawRect(
+                            color = selectionColor,
+                            topLeft = Offset(imageLeft + left * contentScale, imageTop + top * contentScale),
+                            size = Size((right - left) * contentScale, (bottom - top) * contentScale),
+                        )
+                    }
+                }
+            }
+        }
     }
+}
+
+private fun Offset.toPdfPageFraction(
+    viewport: IntSize,
+    bitmapWidth: Int,
+    bitmapHeight: Int,
+    fillViewport: Boolean,
+    zoomScale: Float,
+    translation: Offset,
+    crop: PdfImageCrop,
+): Offset? {
+    if (viewport.width <= 0 || viewport.height <= 0 || bitmapWidth <= 0 || bitmapHeight <= 0 || crop.width <= 0 || crop.height <= 0) return null
+    val unzoomed = Offset(
+        x = (x - viewport.width / 2f - translation.x) / zoomScale + viewport.width / 2f,
+        y = (y - viewport.height / 2f - translation.y) / zoomScale + viewport.height / 2f,
+    )
+    val contentScale = if (fillViewport) {
+        min(viewport.width / bitmapWidth.toFloat(), viewport.height / bitmapHeight.toFloat())
+    } else {
+        viewport.width / bitmapWidth.toFloat()
+    }
+    val contentWidth = bitmapWidth * contentScale
+    val contentHeight = bitmapHeight * contentScale
+    val left = (viewport.width - contentWidth) / 2f
+    val top = (viewport.height - contentHeight) / 2f
+    if (unzoomed.x !in left..(left + contentWidth) || unzoomed.y !in top..(top + contentHeight)) return null
+    val bitmapX = (unzoomed.x - left) / contentScale
+    val bitmapY = (unzoomed.y - top) / contentScale
+    val pageX = crop.left + bitmapX / bitmapWidth * crop.width
+    val pageY = crop.top + bitmapY / bitmapHeight * crop.height
+    return Offset(pageX / crop.sourceWidth, pageY / crop.sourceHeight)
 }
 
 private const val DEFAULT_PDF_PAGE_ASPECT_RATIO = 0.707f

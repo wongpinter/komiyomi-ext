@@ -24,6 +24,7 @@ internal class EbookLibraryRestorer(
     ) {
         store.restoreFolderSources(library.folderSources)
         store.restoreShelfSettings(library.shelfSettings)
+        library.readerDefaults?.let(store::restoreReaderDefaults)
 
         val restoredFiles = mutableMapOf<String, java.io.File>()
         val errors = mutableMapOf<BackupEbook, String>()

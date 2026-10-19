@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ChromeReaderMode
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.Explore
@@ -45,6 +46,7 @@ import eu.kanade.presentation.more.settings.screen.about.AboutScreen
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.util.LocalBackPress
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.ui.ebook.SettingsEbookScreen
 import exh.assets.EhAssets
 import exh.assets.ehassets.EhLogo
 import exh.assets.ehassets.MangadexLogo
@@ -201,6 +203,14 @@ object SettingsMainScreen : Screen() {
             icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
             screen = SettingsReaderScreen,
         ),
+        // KMK -->
+        Item(
+            titleRes = KMR.strings.ebook_settings_title,
+            subtitleRes = KMR.strings.ebook_settings_summary,
+            icon = Icons.AutoMirrored.Outlined.MenuBook,
+            screen = SettingsEbookScreen,
+        ),
+        // KMK <--
         Item(
             titleRes = MR.strings.pref_category_downloads,
             subtitleRes = MR.strings.pref_downloads_summary,

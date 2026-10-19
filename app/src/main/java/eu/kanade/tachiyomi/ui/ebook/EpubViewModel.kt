@@ -36,6 +36,10 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
     fun shelfSettings(): EpubStore.ShelfSettings = store.shelfSettings()
 
     fun saveShelfSettings(settings: EpubStore.ShelfSettings) = store.saveShelfSettings(settings)
+
+    fun ebookReaderDefaults(): EpubStore.EbookReaderDefaults = store.ebookReaderDefaults()
+
+    fun saveEbookReaderDefaults(settings: EpubStore.EbookReaderDefaults) = store.saveEbookReaderDefaults(settings)
     private val importer = EpubImporter(store.directory)
     private val mutableState = MutableStateFlow<State>(State.Idle)
     val state = mutableState.asStateFlow()

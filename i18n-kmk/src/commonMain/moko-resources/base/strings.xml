@@ -406,6 +406,15 @@
     <string name="ebook_pdf_search_action">Search</string>
     <string name="ebook_pdf_searching">Searching pages…</string>
     <string name="ebook_pdf_search_requires_android_15">Text search requires Android 15 or later.</string>
+    <!-- KMK -->
+    <string name="ebook_pdf_text_selection_title">Selected text</string>
+    <string name="ebook_pdf_text_selection_copy">Copy</string>
+    <string name="ebook_pdf_text_selection_select_page">Select page</string>
+    <string name="ebook_pdf_text_selection_dismiss">Dismiss text selection</string>
+    <string name="ebook_pdf_text_selection_requires_android_15">Text selection requires Android 15 or later.</string>
+    <string name="ebook_pdf_text_selection_no_text">No selectable text at this position.</string>
+    <string name="ebook_pdf_text_selection_failed">Couldn’t select text from this page.</string>
+    <!-- KMK END -->
     <string name="ebook_pdf_search_failed">Couldn’t search this PDF.</string>
     <string name="ebook_pdf_search_prompt">Enter a word or phrase to search this PDF.</string>
     <string name="ebook_pdf_search_no_results">No matching pages found.</string>
@@ -568,4 +577,16 @@
     <string name="epub_toc_failed">Could not load contents.</string>
     <string name="epub_toc_retry">Retry</string>
     <string name="epub_toc_jump_failed">Could not open this chapter.</string>
+    <string name="ebook_settings_title">Ebook settings</string>
+    <string name="ebook_settings_summary">Set shelf and reader defaults. A book keeps its saved choices; defaults fill in settings it has not saved.</string>
+    <string name="ebook_settings_shelf">Shelf</string>
+    <string name="ebook_settings_shelf_layout">Shelf layout</string>
+    <string name="ebook_settings_sort">Default sort</string>
+    <string name="ebook_settings_cover_size">Cover size · %1$d dp</string>
+    <string name="ebook_settings_epub">EPUB defaults</string>
+    <string name="ebook_settings_default_font">Default font</string>
+    <string name="ebook_settings_text_size">Default text size · %1$d%%</string>
+    <string name="ebook_settings_pdf">PDF defaults</string>
+    <string name="ebook_settings_behavior">Reading behavior</string>
+    <string name="ebook_settings_keep_screen_on_summary">Uses the same preference as the manga reader.</string>
 </resources>

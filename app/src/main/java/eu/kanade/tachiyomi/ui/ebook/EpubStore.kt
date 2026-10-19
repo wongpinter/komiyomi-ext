@@ -13,10 +13,12 @@ import eu.kanade.tachiyomi.data.backup.models.BackupEbook
 import eu.kanade.tachiyomi.data.backup.models.BackupEbookFolderOwner
 import eu.kanade.tachiyomi.data.backup.models.BackupEbookFolderSource
 import eu.kanade.tachiyomi.data.backup.models.BackupEbookLibrary
+import eu.kanade.tachiyomi.data.backup.models.BackupEbookReaderSettings
 import eu.kanade.tachiyomi.data.backup.models.BackupEbookShelfSettings
 import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubPreferences
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.publication.Locator
 import java.io.File
 import java.io.FileOutputStream
@@ -34,6 +36,10 @@ internal class EpubStore(context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
     private val coverLock = Any()
 
+    init {
+        migrateLegacyReaderOverrides()
+    }
+
     internal data class ShelfSettings(
         val query: String = "",
         val filter: String = "ALL",
@@ -41,6 +47,14 @@ internal class EpubStore(context: Context) {
         val descending: Boolean = true,
         val layout: String = "GRID",
         val coverSize: Int = 96,
+    )
+
+    internal data class EbookReaderDefaults(
+        val epubTheme: String = "SEPIA",
+        val epubFontFamily: String? = null,
+        val epubFontSize: Double = 1.0,
+        val epubScroll: Boolean = true,
+        val pdf: PdfReaderSettings = PdfReaderSettings(),
     )
 
     internal data class FolderSource(val uri: String, val name: String)
@@ -92,6 +106,64 @@ internal class EpubStore(context: Context) {
             putString("layout", settings.layout)
             putInt("coverSize", settings.coverSize.coerceIn(96, 192))
         }
+    }
+
+    fun ebookReaderDefaults(): EbookReaderDefaults = EbookReaderDefaults(
+        epubTheme = shelfPreferences.getString("readerEpubTheme", null)
+            ?.takeIf { it in EPUB_THEMES } ?: "SEPIA",
+        epubFontFamily = shelfPreferences.getString("readerEpubFontFamily", null)
+            ?.takeIf { name -> EpubFonts.families.any { it.name == name } },
+        epubFontSize = shelfPreferences.getString("readerEpubFontSize", null)
+            ?.toDoubleOrNull()
+            ?.takeIf { it.isFinite() && it in EPUB_FONT_SIZE_RANGE } ?: 1.0,
+        epubScroll = shelfPreferences.getBoolean("readerEpubScroll", true),
+        pdf = PdfReaderSettings(
+            layout = PdfLayoutMode.fromStoredName(shelfPreferences.getString("readerPdfLayout", "CONTINUOUS")),
+            fit = PdfFitMode.fromStoredName(shelfPreferences.getString("readerPdfFit", "WIDTH")),
+            trimMargins = shelfPreferences.getBoolean("readerPdfTrimMargins", false),
+            color = PdfColorMode.fromStoredName(shelfPreferences.getString("readerPdfColor", "ORIGINAL")),
+            pageGapDp = shelfPreferences.getInt("readerPdfPageGap", 8).coerceIn(0, 24),
+        ),
+    )
+
+    fun saveEbookReaderDefaults(settings: EbookReaderDefaults) {
+        require(settings.epubTheme in EPUB_THEMES)
+        require(settings.epubFontFamily == null || EpubFonts.families.any { it.name == settings.epubFontFamily })
+        require(settings.epubFontSize.isFinite() && settings.epubFontSize in EPUB_FONT_SIZE_RANGE)
+        shelfPreferences.edit {
+            putString("readerEpubTheme", settings.epubTheme)
+            if (settings.epubFontFamily == null) {
+                remove("readerEpubFontFamily")
+            } else {
+                putString("readerEpubFontFamily", settings.epubFontFamily)
+            }
+            putString("readerEpubFontSize", settings.epubFontSize.toString())
+            putBoolean("readerEpubScroll", settings.epubScroll)
+            putString("readerPdfLayout", settings.pdf.layout.name)
+            putString("readerPdfFit", settings.pdf.fit.name)
+            putBoolean("readerPdfTrimMargins", settings.pdf.trimMargins)
+            putString("readerPdfColor", settings.pdf.color.name)
+            putInt("readerPdfPageGap", settings.pdf.pageGapDp.coerceIn(0, 24))
+        }
+    }
+
+    fun restoreReaderDefaults(settings: BackupEbookReaderSettings) {
+        saveEbookReaderDefaults(
+            EbookReaderDefaults(
+                epubTheme = settings.epubTheme.takeIf { it in EPUB_THEMES } ?: "SEPIA",
+                epubFontFamily = settings.epubFontFamily
+                    ?.takeIf { name -> EpubFonts.families.any { it.name == name } },
+                epubFontSize = settings.epubFontSize.takeIf { it.isFinite() && it in EPUB_FONT_SIZE_RANGE } ?: 1.0,
+                epubScroll = settings.epubScroll,
+                pdf = PdfReaderSettings(
+                    layout = PdfLayoutMode.fromStoredName(settings.pdfLayout),
+                    fit = PdfFitMode.fromStoredName(settings.pdfFit),
+                    trimMargins = settings.pdfTrimMargins,
+                    color = PdfColorMode.fromStoredName(settings.pdfColor),
+                    pageGapDp = settings.pdfPageGapDp.coerceIn(0, 24),
+                ),
+            ),
+        )
     }
 
     fun latestFile(): File? {
@@ -240,6 +312,19 @@ internal class EpubStore(context: Context) {
                 layout = settings.layout,
                 coverSize = settings.coverSize,
             ),
+            readerDefaults = ebookReaderDefaults().let { defaults ->
+                BackupEbookReaderSettings(
+                    epubTheme = defaults.epubTheme,
+                    epubFontFamily = defaults.epubFontFamily,
+                    epubFontSize = defaults.epubFontSize,
+                    epubScroll = defaults.epubScroll,
+                    pdfLayout = defaults.pdf.layout.name,
+                    pdfFit = defaults.pdf.fit.name,
+                    pdfTrimMargins = defaults.pdf.trimMargins,
+                    pdfColor = defaults.pdf.color.name,
+                    pdfPageGapDp = defaults.pdf.pageGapDp,
+                )
+            },
         )
     }
 
@@ -261,6 +346,7 @@ internal class EpubStore(context: Context) {
         val validatedPreferences = book.epubPreferencesJson?.let {
             runCatching { json.decodeFromString<EpubPreferences>(it) }.getOrNull()
         }
+        val restoredTheme = book.epubTheme?.takeIf { it in EPUB_THEMES }
         preferences.edit {
             putString("title-${file.name}", book.title.take(512))
             putString("authors-${file.name}", book.authors.take(512))
@@ -270,21 +356,27 @@ internal class EpubStore(context: Context) {
             book.category?.let { putString("category-${file.name}", it) }
             validatedLocator?.let { putString("location-${file.name}", it.toJSON().toString()) }
             validatedBookmark?.let { putString("bookmark-${file.name}", it.toJSON().toString()) }
-            book.epubTheme?.takeIf { it in setOf("LIGHT", "SEPIA", "DARK") }?.let { putString("theme-${file.name}", it) }
             if (book.format == "pdf") {
                 putInt("pdf-page-${file.name}", book.pdfPage.coerceAtLeast(0))
-                val prefix = "pdf-reader-${file.name}-"
-                putString("${prefix}layout", PdfLayoutMode.fromStoredName(book.pdfLayout).name)
-                putString("${prefix}fit", PdfFitMode.fromStoredName(book.pdfFit).name)
-                putBoolean("${prefix}trim", book.pdfTrimMargins)
-                putString("${prefix}color", PdfColorMode.fromStoredName(book.pdfColor).name)
-                putInt("${prefix}gap", book.pdfPageGapDp.coerceIn(0, 24))
                 putStringSet("pdf-bookmarks-${file.name}", book.pdfBookmarks.filter { it >= 0 }.map(Int::toString).toSet())
             }
             if (preferences.getString("latest", null) == null || book.lastOpened >= latestOpenedAt()) {
                 putString("latest", file.name)
             }
         }
+        if (book.format == "pdf") {
+            savePdfReaderSettings(
+                file,
+                PdfReaderSettings(
+                    layout = PdfLayoutMode.fromStoredName(book.pdfLayout),
+                    fit = PdfFitMode.fromStoredName(book.pdfFit),
+                    trimMargins = book.pdfTrimMargins,
+                    color = PdfColorMode.fromStoredName(book.pdfColor),
+                    pageGapDp = book.pdfPageGapDp.coerceIn(0, 24),
+                ),
+            )
+        }
+        restoredTheme?.let { saveReaderThemeName(file, it) }
         validatedPreferences?.let { savePreferences(file, EpubFonts.normalize(it)) }
 
         val sourceUri = book.sourceUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
@@ -558,12 +650,17 @@ internal class EpubStore(context: Context) {
     fun readerThemeName(file: File): String? {
         requireManaged(file)
         return preferences.getString("theme-${file.name}", null)
+            ?.takeIf { it in EPUB_THEMES }
+            ?: ebookReaderDefaults().epubTheme
     }
 
     fun saveReaderThemeName(file: File, themeName: String) {
         requireManaged(file)
         require(themeName in setOf("LIGHT", "SEPIA", "DARK")) { "Unsupported EPUB reader theme" }
-        preferences.edit { putString("theme-${file.name}", themeName) }
+        val key = "theme-${file.name}"
+        preferences.edit {
+            if (themeName == ebookReaderDefaults().epubTheme) remove(key) else putString(key, themeName)
+        }
     }
 
     fun toggleBookmark(file: File, locator: Locator): Boolean {
@@ -609,6 +706,48 @@ internal class EpubStore(context: Context) {
         const val MAX_COVER_CACHE_BYTES = 10 * 1024 * 1024
         const val MAX_METADATA_CACHE_BYTES = 8 * 1024 * 1024
         const val RESTORED_BACKUP_FILE_PREFIX = "restored-backup-file-"
+        const val READER_DEFAULTS_MIGRATION_VERSION = 1
+        const val READER_DEFAULTS_MIGRATION_KEY = "reader-defaults-migration-version"
+        val EPUB_THEMES = setOf("LIGHT", "SEPIA", "DARK")
+        val EPUB_FONT_SIZE_RANGE = 0.5..3.0
+    }
+
+    private fun migrateLegacyReaderOverrides() {
+        if (shelfPreferences.getInt(READER_DEFAULTS_MIGRATION_KEY, 0) >= READER_DEFAULTS_MIGRATION_VERSION) return
+
+        val legacyThemeKeys = preferences.all.keys.filter { key ->
+            key.startsWith("theme-") && preferences.getString(key, null) == "SEPIA"
+        }
+        val legacyPdfKeys = preferences.all.keys.filter { key ->
+            if (!key.startsWith("pdf-reader-")) return@filter false
+            when {
+                key.endsWith("-layout") -> preferences.getString(key, null) == PdfLayoutMode.CONTINUOUS.name
+                key.endsWith("-fit") -> preferences.getString(key, null) == PdfFitMode.WIDTH.name
+                key.endsWith("-trim") -> !preferences.getBoolean(key, false)
+                key.endsWith("-color") -> preferences.getString(key, null) == PdfColorMode.ORIGINAL.name
+                key.endsWith("-gap") -> preferences.getInt(key, 8) == 8
+                else -> false
+            }
+        }
+        val legacyEpubPreferences = preferences.all.mapNotNull { (key, value) ->
+            if (!key.startsWith("preferences-")) return@mapNotNull null
+            val encoded = value as? String ?: return@mapNotNull null
+            val stored = runCatching { json.decodeFromString<EpubPreferences>(encoded) }.getOrNull() ?: return@mapNotNull null
+            val migrated = stored.copy(
+                fontSize = stored.fontSize?.takeUnless { it == 1.0 },
+                scroll = stored.scroll?.takeUnless { it },
+            )
+            (key to migrated).takeIf { migrated != stored }
+        }
+
+        preferences.edit {
+            legacyThemeKeys.forEach { remove(it) }
+            legacyPdfKeys.forEach { remove(it) }
+            legacyEpubPreferences.forEach { (key, value) ->
+                putString(key, json.encodeToString(EpubPreferences.serializer(), value))
+            }
+        }
+        shelfPreferences.edit { putInt(READER_DEFAULTS_MIGRATION_KEY, READER_DEFAULTS_MIGRATION_VERSION) }
     }
 
     private fun restoredBackupFileKey(fileName: String): String = "$RESTORED_BACKUP_FILE_PREFIX$fileName"
@@ -688,24 +827,30 @@ internal class EpubStore(context: Context) {
     fun pdfReaderSettings(file: File): PdfReaderSettings {
         requireManaged(file)
         val prefix = "pdf-reader-${file.name}-"
+        val defaults = ebookReaderDefaults().pdf
         return PdfReaderSettings(
-            layout = PdfLayoutMode.fromStoredName(preferences.getString("${prefix}layout", null)),
-            fit = PdfFitMode.fromStoredName(preferences.getString("${prefix}fit", null)),
-            trimMargins = preferences.getBoolean("${prefix}trim", false),
-            color = PdfColorMode.fromStoredName(preferences.getString("${prefix}color", null)),
-            pageGapDp = preferences.getInt("${prefix}gap", 8).coerceIn(0, 24),
+            layout = preferences.getString("${prefix}layout", null)?.let { PdfLayoutMode.fromStoredName(it) } ?: defaults.layout,
+            fit = preferences.getString("${prefix}fit", null)?.let { PdfFitMode.fromStoredName(it) } ?: defaults.fit,
+            trimMargins = if (preferences.contains("${prefix}trim")) preferences.getBoolean("${prefix}trim", false) else defaults.trimMargins,
+            color = preferences.getString("${prefix}color", null)?.let { PdfColorMode.fromStoredName(it) } ?: defaults.color,
+            pageGapDp = if (preferences.contains("${prefix}gap")) {
+                preferences.getInt("${prefix}gap", 8).coerceIn(0, 24)
+            } else {
+                defaults.pageGapDp
+            },
         )
     }
 
     fun savePdfReaderSettings(file: File, settings: PdfReaderSettings) {
         requireManaged(file)
         val prefix = "pdf-reader-${file.name}-"
+        val defaults = ebookReaderDefaults().pdf
         preferences.edit {
-            putString("${prefix}layout", settings.layout.name)
-            putString("${prefix}fit", settings.fit.name)
-            putBoolean("${prefix}trim", settings.trimMargins)
-            putString("${prefix}color", settings.color.name)
-            putInt("${prefix}gap", settings.pageGapDp.coerceIn(0, 24))
+            if (settings.layout == defaults.layout) remove("${prefix}layout") else putString("${prefix}layout", settings.layout.name)
+            if (settings.fit == defaults.fit) remove("${prefix}fit") else putString("${prefix}fit", settings.fit.name)
+            if (settings.trimMargins == defaults.trimMargins) remove("${prefix}trim") else putBoolean("${prefix}trim", settings.trimMargins)
+            if (settings.color == defaults.color) remove("${prefix}color") else putString("${prefix}color", settings.color.name)
+            if (settings.pageGapDp == defaults.pageGapDp) remove("${prefix}gap") else putInt("${prefix}gap", settings.pageGapDp.coerceIn(0, 24))
         }
     }
 
@@ -735,19 +880,35 @@ internal class EpubStore(context: Context) {
     }
 
     fun readerPreferences(file: File): EpubPreferences {
-        val restored = runCatching {
+        val stored = runCatching {
             preferences.getString("preferences-${file.name}", null)?.let {
                 json.decodeFromString<EpubPreferences>(it)
             }
-        }.getOrNull() ?: EpubPreferences(scroll = true)
-        val normalized = EpubFonts.normalize(restored)
-        if (normalized != restored) savePreferences(file, normalized)
-        return normalized
+        }.getOrNull() ?: EpubPreferences()
+        val normalized = EpubFonts.normalize(stored)
+        if (normalized != stored) savePreferences(file, normalized)
+        val defaults = ebookReaderDefaults()
+        return normalized.copy(
+            fontFamily = if (normalized.fontFamily != null || normalized.publisherStyles == true) {
+                normalized.fontFamily
+            } else {
+                defaults.epubFontFamily?.let(::FontFamily)
+            },
+            fontSize = normalized.fontSize ?: defaults.epubFontSize,
+            scroll = normalized.scroll ?: defaults.epubScroll,
+        )
     }
 
     fun savePreferences(file: File, value: EpubPreferences) {
+        val defaults = ebookReaderDefaults()
+        val defaultFontFamily = defaults.epubFontFamily?.let(::FontFamily)
+        val overrides = value.copy(
+            fontFamily = value.fontFamily.takeUnless { value.publisherStyles != true && it == defaultFontFamily },
+            fontSize = value.fontSize?.takeUnless { it == defaults.epubFontSize },
+            scroll = value.scroll?.takeUnless { it == defaults.epubScroll },
+        )
         preferences.edit {
-            putString("preferences-${file.name}", json.encodeToString(EpubPreferences.serializer(), value.copy(theme = null)))
+            putString("preferences-${file.name}", json.encodeToString(EpubPreferences.serializer(), overrides.copy(theme = null)))
         }
     }
 }

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ViewCarousel
@@ -210,7 +211,7 @@ private enum class EpubLibraryFilter {
     FINISHED,
 }
 
-private enum class EpubLibrarySort {
+internal enum class EpubLibrarySort {
     RECENT,
     ADDED,
     AUTHOR,
@@ -220,7 +221,7 @@ private enum class EpubLibrarySort {
     PROGRESS,
 }
 
-private enum class EpubLibraryLayout {
+internal enum class EpubLibraryLayout {
     GRID,
     LIST,
     COVERS,
@@ -308,6 +309,7 @@ internal fun EpubLibraryScreen(
     onShelfSettingsChange: (EpubStore.ShelfSettings) -> Unit,
     onImport: () -> Unit,
     onAddFolder: () -> Unit,
+    onSettings: () -> Unit,
     onScanFolders: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onOpen: (File) -> Unit,
@@ -542,28 +544,33 @@ internal fun EpubLibraryScreen(
                             }
                         },
                         actions = {
-                            Box {
-                                IconButton(onClick = { importMenuExpanded = true }, enabled = !operationInProgress) {
-                                    Icon(Icons.Outlined.Add, contentDescription = stringResource(KMR.strings.epub_library_import))
+                            Row {
+                                IconButton(onClick = onSettings) {
+                                    Icon(Icons.Outlined.Settings, contentDescription = stringResource(KMR.strings.ebook_settings_title))
                                 }
-                                androidx.compose.material3.DropdownMenu(
-                                    expanded = importMenuExpanded,
-                                    onDismissRequest = { importMenuExpanded = false },
-                                ) {
-                                    androidx.compose.material3.DropdownMenuItem(
-                                        text = { Text(stringResource(KMR.strings.epub_library_import)) },
-                                        onClick = {
-                                            importMenuExpanded = false
-                                            onImport()
-                                        },
-                                    )
-                                    androidx.compose.material3.DropdownMenuItem(
-                                        text = { Text(stringResource(KMR.strings.epub_library_add_folder)) },
-                                        onClick = {
-                                            importMenuExpanded = false
-                                            onAddFolder()
-                                        },
-                                    )
+                                Box {
+                                    IconButton(onClick = { importMenuExpanded = true }, enabled = !operationInProgress) {
+                                        Icon(Icons.Outlined.Add, contentDescription = stringResource(KMR.strings.epub_library_import))
+                                    }
+                                    androidx.compose.material3.DropdownMenu(
+                                        expanded = importMenuExpanded,
+                                        onDismissRequest = { importMenuExpanded = false },
+                                    ) {
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text(stringResource(KMR.strings.epub_library_import)) },
+                                            onClick = {
+                                                importMenuExpanded = false
+                                                onImport()
+                                            },
+                                        )
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text(stringResource(KMR.strings.epub_library_add_folder)) },
+                                            onClick = {
+                                                importMenuExpanded = false
+                                                onAddFolder()
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         },
