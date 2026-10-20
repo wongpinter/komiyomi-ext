@@ -2,13 +2,12 @@
 
 Komiyomi Ext is the extension-enabled manga reader that complements the standalone Komiyomi CBZ/CBR reader. The shared mark combines stylized hiragana **こ** (ko) and **よ** (yo); the `Ext` wordmark distinguishes this app.
 
-- Launcher coral: `#F63E50`
-- Launcher background: `#F0D5C0`
-- App logo vermilion: `#B63736`
-- Warm cream: `#FFF5E6`
-- Wordmark ink: `#282321`
+- Mark coral: `#F63E50`
+- Mark background: `#F0D5C0`
 
-`komiyomi-ext-icon.svg` and `komiyomi-ext-logo.svg` remain the scalable sources for in-app branding. Android's launcher uses the selected solid coral icon set in its density-specific mipmap resources, with adaptive foreground and monochrome layers in `app/src/main/res/drawable-nodpi/`. `branding/android/komiyomi-ext-playstore-512.png` is the Play Store export. `komiyomi-reader-icon-reference.png` is retained only as a reference to the sibling reader's earlier mark.
+The current brand artwork comes from the supplied Koyo unified asset pack. `android/komiyomi-ext-playstore-512.png` is the exact 512 px light-background export and is used in the root README. Android's launcher and in-app logo use the matching solid coral transparent mark from the pack in `app/src/main/res/drawable-nodpi/`. The adaptive monochrome and notification icons use the pack's solid black transparent mark. `komiyomi-reader-icon-reference.png` is retained only as a reference to the sibling reader's earlier mark.
+
+Do not use the removed hand-drawn SVG drafts; they do not match the supplied logo artwork.
 
 The Android application ID is `com.wongpinter.komiyomi.ext` (`com.wongpinter.komiyomi.ext.dev` for debug). This is a new Android app identity; legacy `app.komikku` installations cannot update into it or share their private app data automatically. The visible name is Komiyomi Ext in every locale through an app-level resource alias. Upstream strings and translations are preserved.
 

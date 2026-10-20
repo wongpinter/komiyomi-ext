@@ -1,10 +1,10 @@
 <div align="center">
 
-<h1>
-  <a href="https://github.com/wongpinter/komiyomi-ext">
-    <img width="360" height="81" src="./branding/komiyomi-ext-logo.svg" alt="Komiyomi Ext"/>
-  </a>
-</h1>
+<a href="https://github.com/wongpinter/komiyomi-ext">
+  <img width="128" height="128" src="./branding/android/komiyomi-ext-playstore-512.png" alt="Komiyomi Ext icon"/>
+</a>
+
+<h1><a href="https://github.com/wongpinter/komiyomi-ext">Komiyomi Ext</a></h1>
 
 <p>Browse manga from compatible source extensions, read local CBZ and CBR archives, and manage EPUB and PDF books on Android.</p>
 
