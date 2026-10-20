@@ -34,7 +34,8 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,6 +89,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.source.local.io.LocalArchiveEntry
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.math.roundToInt
 
 class LocalArchiveScreen(
     private val recursive: Boolean,
@@ -121,11 +123,21 @@ class LocalArchiveScreen(
         var query by rememberSaveable { mutableStateOf("") }
         // KMK -->
         var searchVisible by rememberSaveable { mutableStateOf(false) }
+        var selectedSeriesKey by rememberSaveable(seriesKey) { mutableStateOf(seriesKey) }
+        var returnQuery by rememberSaveable(seriesKey) { mutableStateOf<String?>(null) }
+        var returnSearchVisible by rememberSaveable(seriesKey) { mutableStateOf(false) }
         var showMetadataSearchDialog by rememberSaveable { mutableStateOf(false) }
         var metadataSearchQuery by rememberSaveable(seriesKey) { mutableStateOf("") }
         val searchFocusRequester = remember { FocusRequester() }
         LaunchedEffect(searchVisible) {
             if (searchVisible) searchFocusRequester.requestFocus()
+        }
+        fun closeSeriesDetails() {
+            selectedSeriesKey = null
+            query = returnQuery.orEmpty()
+            searchVisible = returnSearchVisible
+            returnQuery = null
+            returnSearchVisible = false
         }
         // KMK <--
         val libraryPreferences = remember { OfflineLibraryPreferences() }
@@ -150,8 +162,8 @@ class LocalArchiveScreen(
         val listView by listViewPreference.collectAsState()
         val coverSize by coverSizePreference.collectAsState()
         // KMK -->
-        val showSeries = recursive && path.isEmpty() && seriesKey == null
-        val showSeriesDetails = recursive && path.isEmpty() && seriesKey != null
+        val showSeries = recursive && path.isEmpty() && selectedSeriesKey == null
+        val showSeriesDetails = recursive && path.isEmpty() && selectedSeriesKey != null
         val duplicateHashes = remember(state.metadata) {
             state.metadata.values.mapNotNull { it.contentHash }
                 .groupingBy { it }
@@ -212,11 +224,11 @@ class LocalArchiveScreen(
                 if (localTitle == null) item else item.copy(title = localTitle)
             }
         }
-        val selectedSeries = remember(allSeries, seriesKey) { allSeries.firstOrNull { it.key == seriesKey } }
+        val selectedSeries = remember(allSeries, selectedSeriesKey) { allSeries.firstOrNull { it.key == selectedSeriesKey } }
         val selectedSeriesManga = selectedSeries?.let { item ->
             offlineMangaUrl(item.entries, item.key)?.let(state.localMangaByUrl::get)
         }
-        val filteredIdentities = filtered.mapTo(hashSetOf()) { it.identity }
+        val filteredIdentities = remember(filtered) { filtered.mapTo(hashSetOf()) { it.identity } }
         val visibleEntries = if (showSeriesDetails) {
             selectedSeries?.entries?.filter { it.identity in filteredIdentities }.orEmpty()
         } else {
@@ -278,15 +290,26 @@ class LocalArchiveScreen(
             }
         }
         val openSeries: (OfflineArchiveSeries) -> Unit = { item ->
-            navigator.push(LocalArchiveScreen(recursive = true, seriesKey = item.key))
+            returnQuery = query
+            returnSearchVisible = searchVisible
+            query = ""
+            searchVisible = false
+            selectedSeriesKey = item.key
         }
-        val continueEntry = selectedSeries?.entries
-            ?.filter { state.progress[it.path]?.let { progress -> progress.started && !progress.completed } == true }
-            ?.maxByOrNull { state.progress[it.path]?.lastRead ?: 0 }
-            ?: selectedSeries?.entries?.firstOrNull { state.progress[it.path]?.completed != true }
-            ?: selectedSeries?.firstEntry
+        val continueEntry = remember(selectedSeries, state.progress) {
+            selectedSeries?.entries
+                ?.filter { state.progress[it.path]?.let { progress -> progress.started && !progress.completed } == true }
+                ?.maxByOrNull { state.progress[it.path]?.lastRead ?: 0 }
+                ?: selectedSeries?.entries?.firstOrNull { state.progress[it.path]?.completed != true }
+        }
         // KMK <--
-        BackHandler(enabled = navigator.canPop) { navigator.pop() }
+        BackHandler(enabled = selectedSeriesKey != null || navigator.canPop) {
+            if (selectedSeriesKey != null) {
+                closeSeriesDetails()
+            } else {
+                navigator.pop()
+            }
+        }
         Scaffold(
             topBar = {
                 AppBar(
@@ -299,10 +322,14 @@ class LocalArchiveScreen(
                     } else {
                         path.substringAfterLast('/').ifEmpty { stringResource(MR.strings.browse) }
                     },
-                    navigateUp = if (navigator.canPop) {
+                    navigateUp = if (selectedSeriesKey != null || navigator.canPop) {
                         (
                             {
-                                navigator.pop()
+                                if (selectedSeriesKey != null) {
+                                    closeSeriesDetails()
+                                } else {
+                                    navigator.pop()
+                                }
                                 Unit
                             }
                             )
@@ -431,7 +458,7 @@ class LocalArchiveScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
-                if (state.lastScannedAt > 0L) {
+                if (state.lastScannedAt > 0L && !showSeriesDetails) {
                     Text(
                         stringResource(
                             KMR.strings.offline_last_scan,
@@ -442,25 +469,27 @@ class LocalArchiveScreen(
                     )
                 }
                 // KMK <--
-                Text(
-                    // KMK -->
-                    text = if (state.loadingCache) {
-                        stringResource(KMR.strings.offline_cache_loading)
-                    } else if (state.scanning) {
-                        stringResource(KMR.strings.offline_scan_progress, state.foldersScanned, state.entries.count { !it.isDirectory })
-                    } else if (showSeries) {
-                        stringResource(KMR.strings.offline_series_count, series.size, filtered.count { !it.isDirectory })
+                if (!showSeriesDetails || state.scanning || state.loadingCache) {
+                    Text(
                         // KMK -->
-                    } else if (showSeriesDetails) {
-                        stringResource(KMR.strings.offline_series_chapters, visibleEntries.size)
+                        text = if (state.loadingCache) {
+                            stringResource(KMR.strings.offline_cache_loading)
+                        } else if (state.scanning) {
+                            stringResource(KMR.strings.offline_scan_progress, state.foldersScanned, state.entries.count { !it.isDirectory })
+                        } else if (showSeries) {
+                            stringResource(KMR.strings.offline_series_count, series.size, filtered.count { !it.isDirectory })
+                            // KMK -->
+                        } else if (showSeriesDetails) {
+                            stringResource(KMR.strings.offline_series_chapters, visibleEntries.size)
+                            // KMK <--
+                        } else {
+                            stringResource(KMR.strings.offline_entry_count, filtered.count { !it.isDirectory }, filtered.count { it.isDirectory })
+                        },
                         // KMK <--
-                    } else {
-                        stringResource(KMR.strings.offline_entry_count, filtered.count { !it.isDirectory }, filtered.count { it.isDirectory })
-                    },
-                    // KMK <--
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
                 if (state.unreadableFolders > 0) {
                     Text(
                         stringResource(KMR.strings.offline_unreadable_folders, state.unreadableFolders),
@@ -553,27 +582,99 @@ class LocalArchiveScreen(
                         // KMK -->
                         if (showSeriesDetails && selectedSeries != null) {
                             item(key = "series-details-header") {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
+                                val progressSummary = remember(selectedSeries, state.progress) {
+                                    offlineSeriesProgressSummary(selectedSeries.entries, state.progress)
+                                }
+                                val creators = listOfNotNull(
+                                    selectedSeriesManga?.author?.trim()?.takeIf { it.isNotEmpty() },
+                                    selectedSeriesManga?.artist?.trim()?.takeIf { it.isNotEmpty() },
+                                ).distinct().joinToString(" · ")
+                                val description = selectedSeriesManga?.description
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                    ),
                                 ) {
-                                    // KMK -->
-                                    LocalArchiveCover(selectedSeries.firstEntry, model, state.revision, selectedSeriesManga, Modifier.width(96.dp))
-                                    // KMK <--
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                                        Text(selectedSeries.title, style = MaterialTheme.typography.titleMedium)
-                                        val readCount = selectedSeries.entries.count { state.progress[it.path]?.completed == true }
-                                        val unreadCount = selectedSeries.entries.count { state.progress[it.path]?.started != true }
-                                        Text(
-                                            stringResource(KMR.strings.offline_series_summary, selectedSeries.entries.size, readCount, unreadCount),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                        if (continueEntry != null) {
-                                            Button(onClick = { openSeriesEntry(continueEntry) }, enabled = state.opening == null) {
-                                                Text(stringResource(KMR.strings.offline_series_continue))
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.Top,
+                                        ) {
+                                            LocalArchiveCover(
+                                                selectedSeries.firstEntry,
+                                                model,
+                                                state.revision,
+                                                selectedSeriesManga,
+                                                Modifier.width(72.dp),
+                                            )
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                Text(
+                                                    text = selectedSeries.title,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                                if (creators.isNotEmpty()) {
+                                                    Text(
+                                                        text = stringResource(KMR.strings.offline_series_author, creators),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                }
+                                                Text(
+                                                    text = stringResource(
+                                                        KMR.strings.offline_series_summary,
+                                                        selectedSeries.entries.size,
+                                                        progressSummary.completed,
+                                                        progressSummary.reading,
+                                                        progressSummary.unread,
+                                                    ),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = stringResource(
+                                                            KMR.strings.offline_series_progress_percent,
+                                                            progressSummary.percent,
+                                                        ),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    if (continueEntry != null) {
+                                                        TextButton(
+                                                            onClick = { openSeriesEntry(continueEntry) },
+                                                            enabled = state.opening == null,
+                                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                                        ) {
+                                                            Text(stringResource(KMR.strings.offline_series_continue))
+                                                        }
+                                                    }
+                                                }
+                                                LinearProgressIndicator(
+                                                    progress = { progressSummary.fraction },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                )
                                             }
+                                        }
+                                        if (description != null) {
+                                            LocalSeriesDescription(description)
                                         }
                                     }
                                 }
@@ -771,6 +872,66 @@ class LocalArchiveScreen(
         // KMK <--
     }
 }
+
+// KMK -->
+private data class OfflineSeriesProgressSummary(
+    val completed: Int,
+    val reading: Int,
+    val unread: Int,
+    val fraction: Float,
+) {
+    val percent: Int get() = (fraction * 100).roundToInt()
+}
+
+private fun offlineSeriesProgressSummary(
+    entries: List<LocalArchiveEntry>,
+    progressByPath: Map<String, ArchiveReadingProgress>,
+): OfflineSeriesProgressSummary {
+    val progress = entries.map { progressByPath[it.path] }
+    val completed = progress.count { it?.completed == true }
+    val reading = progress.count { it?.let { chapter -> chapter.started && !chapter.completed } == true }
+    val unread = entries.size - completed - reading
+    val fraction = if (entries.isEmpty()) {
+        0f
+    } else {
+        progress.sumOf { chapter ->
+            chapter?.takeIf { it.started }?.fraction?.toDouble() ?: 0.0
+        }.div(entries.size).toFloat().coerceIn(0f, 1f)
+    }
+
+    return OfflineSeriesProgressSummary(completed, reading, unread, fraction)
+}
+
+@Composable
+private fun LocalSeriesDescription(description: String) {
+    var expanded by rememberSaveable(description) { mutableStateOf(false) }
+    var canExpand by remember(description) { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(KMR.strings.offline_series_about),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (expanded) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { layoutResult ->
+                if (!expanded) canExpand = layoutResult.hasVisualOverflow
+            },
+        )
+        if (canExpand) {
+            TextButton(
+                onClick = { expanded = !expanded },
+                contentPadding = PaddingValues(0.dp),
+            ) {
+                Text(stringResource(if (expanded) MR.strings.manga_info_collapse else MR.strings.manga_info_expand))
+            }
+        }
+    }
+}
+// KMK <--
 
 @Composable
 internal fun ArchiveCover(entry: LocalArchiveEntry, model: LocalArchiveScreenModel, revision: Int, modifier: Modifier) {

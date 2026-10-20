@@ -214,7 +214,12 @@
     <string name="offline_last_scan">Last scanned %1$s</string>
     <string name="offline_duplicates">Duplicates</string>
     <string name="offline_duplicate_copies">Exact duplicate · %1$d copies</string>
-    <string name="offline_series_summary">%1$d chapters · %2$d read · %3$d unread</string>
+    <string name="offline_series_summary">%1$d chapters · %2$d read · %3$d reading · %4$d unread</string>
+    <!-- KMK -->
+    <string name="offline_series_author">By %1$s</string>
+    <string name="offline_series_about">About</string>
+    <string name="offline_series_progress_percent">%1$d%% complete</string>
+    <!-- KMK END -->
     <string name="offline_series_continue">Continue series</string>
     <!-- KMK -->
     <string name="offline_entry_count">%1$d archives · %2$d folders</string>
