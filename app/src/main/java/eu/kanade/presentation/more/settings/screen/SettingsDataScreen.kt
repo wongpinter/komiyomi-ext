@@ -67,6 +67,8 @@ import eu.kanade.tachiyomi.data.export.LibraryExporter
 import eu.kanade.tachiyomi.data.export.LibraryExporter.ExportOptions
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
 import eu.kanade.tachiyomi.data.sync.SyncManager
+import eu.kanade.tachiyomi.data.sync.service.GoogleDriveService
+import eu.kanade.tachiyomi.data.sync.service.GoogleDriveSyncService
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
@@ -695,6 +697,65 @@ object SettingsDataScreen : SearchableSettings {
                 title = stringResource(KMR.strings.pref_show_syncing_progress_banner),
             ),
             // KMK <--
+        )
+    }
+
+    @Composable
+    private fun getGoogleDrivePreferences(): List<Preference> {
+        val context = LocalContext.current
+        val googleDriveSync = Injekt.get<GoogleDriveService>()
+        return listOf(
+            Preference.PreferenceItem.TextPreference(
+                title = stringResource(SYMR.strings.pref_google_drive_sign_in),
+                onClick = {
+                    val intent = googleDriveSync.getSignInIntent()
+                    context.startActivity(intent)
+                },
+            ),
+            getGoogleDrivePurge(),
+        )
+    }
+
+    @Composable
+    private fun getGoogleDrivePurge(): Preference.PreferenceItem.TextPreference {
+        val scope = rememberCoroutineScope()
+        val context = LocalContext.current
+        val googleDriveSync = remember { GoogleDriveSyncService(context) }
+        var showPurgeDialog by remember { mutableStateOf(false) }
+
+        if (showPurgeDialog) {
+            PurgeConfirmationDialog(
+                onConfirm = {
+                    showPurgeDialog = false
+                    scope.launch {
+                        val result = googleDriveSync.deleteSyncDataFromGoogleDrive()
+                        when (result) {
+                            GoogleDriveSyncService.DeleteSyncDataStatus.NOT_INITIALIZED -> context.toast(
+                                SYMR.strings.google_drive_not_signed_in,
+                                duration = 5000,
+                            )
+                            GoogleDriveSyncService.DeleteSyncDataStatus.NO_FILES -> context.toast(
+                                SYMR.strings.google_drive_sync_data_not_found,
+                                duration = 5000,
+                            )
+                            GoogleDriveSyncService.DeleteSyncDataStatus.SUCCESS -> context.toast(
+                                SYMR.strings.google_drive_sync_data_purged,
+                                duration = 5000,
+                            )
+                            GoogleDriveSyncService.DeleteSyncDataStatus.ERROR -> context.toast(
+                                SYMR.strings.google_drive_sync_data_purge_error,
+                                duration = 10000,
+                            )
+                        }
+                    }
+                },
+                onDismissRequest = { showPurgeDialog = false },
+            )
+        }
+
+        return Preference.PreferenceItem.TextPreference(
+            title = stringResource(SYMR.strings.pref_google_drive_purge_sync_data),
+            onClick = { showPurgeDialog = true },
         )
     }
 

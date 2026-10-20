@@ -43,7 +43,7 @@ This document records the EPUB reader implementation, validation evidence, and k
 
 ## Current limits
 
-- The shelf manages imported local EPUB and PDF books. Annotations, app-backup integration and user font-file imports are not supported.
+- The shelf manages imported local EPUB and PDF books. App backup includes ebook shelf metadata, reader state and preferences; users can optionally include managed book files. Path-only backups preserve the original source URI, so restore depends on that URI remaining accessible on the device; there is no in-app relink flow yet. Annotations and user font-file imports are not supported.
   Per-book margin/line/paragraph/alignment controls and six bundled font families are available for reflowable EPUBs; see [layout settings](epub-layout-settings.md) and [font details](epub-fonts.md).
 - Use trusted DRM-free EPUBs and local PDFs. EPUB external hyperlink activation is blocked, and Readium's HTTP
   client rejects remote publication-resource requests; local packaged resources remain available.

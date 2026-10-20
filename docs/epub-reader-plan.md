@@ -1,8 +1,8 @@
 <!-- KMK -->
 # EPUB reader and manager implementation plan
 
-Status: The EPUB reader is integrated into the production app source set, with an Ebook bottom navigation destination and Updates under More.
-See [reader verification and known limits](epub-reader-verification.md). The architecture notes below include original proposals that are not part of the current implementation.
+Status: The ebook reader is integrated into the production app source set, with EPUB and local PDF readers, an Ebook bottom navigation destination, and Updates under More.
+See [reader verification and known limits](epub-reader-verification.md) for implemented behavior and validation. The architecture and phase notes below preserve original proposals; they are not a current implementation checklist.
 Benchmarks: Moon+ Reader for customization; Readest for visual clarity.
 Primary acceptance fixture: the user's approximately 1 GB EPUB on a named Android device.
 Scope: integrate into Komiyomi Ext without replacing or regressing its comic reader.
