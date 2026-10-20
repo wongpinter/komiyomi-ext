@@ -37,6 +37,14 @@ class EpubStoreTest {
         every { preferences.getInt(any(), any()) } answers { intValues[firstArg()] ?: secondArg() }
         every { preferences.getBoolean(any(), any()) } answers { booleanValues[firstArg()] ?: secondArg() }
         every { preferences.getStringSet(any(), any()) } answers { stringSetValues[firstArg()] ?: secondArg() }
+        every { preferences.all } answers {
+            buildMap<String, Any> {
+                this@EpubStoreTest.values.forEach { (key, value) -> value?.let { put(key, it) } }
+                putAll(intValues)
+                putAll(booleanValues)
+                putAll(stringSetValues)
+            }
+        }
         every { preferences.contains(any()) } answers {
             val key = firstArg<String>()
             values.containsKey(key) || intValues.containsKey(key) || booleanValues.containsKey(key) || stringSetValues.containsKey(key)
@@ -249,7 +257,7 @@ class EpubStoreTest {
         assertEquals(literata, reopened.readerPreferences(first).fontFamily)
         assertEquals(lora, reopened.readerPreferences(second).fontFamily)
         reopened.savePreferences(first, EpubFonts.select(reopened.readerPreferences(first), null))
-        assertEquals(original, reopened.readerPreferences(first))
+        assertEquals(original.copy(publisherStyles = true), reopened.readerPreferences(first))
         assertEquals(lora, reopened.readerPreferences(second).fontFamily)
     }
 

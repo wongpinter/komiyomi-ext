@@ -69,7 +69,12 @@ class EpubLayoutTest {
         val original = EpubPreferences(scroll = true, fontSize = 1.8)
         assertEquals(listOf(TextAlign.START, TextAlign.LEFT, TextAlign.RIGHT, TextAlign.JUSTIFY), EpubLayout.alignments)
         EpubLayout.alignments.forEach { value ->
-            assertEquals(original.copy(textAlign = value, publisherStyles = false), EpubLayout.align(original, value))
+            val expected = original.copy(
+                textAlign = value,
+                hyphens = if (value == TextAlign.JUSTIFY) true else original.hyphens,
+                publisherStyles = false,
+            )
+            assertEquals(expected, EpubLayout.align(original, value))
         }
         listOf(TextAlign.CENTER, TextAlign.END).forEach { value ->
             assertThrows(IllegalArgumentException::class.java) { EpubLayout.align(original, value) }

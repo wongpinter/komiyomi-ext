@@ -186,14 +186,16 @@ class DownloadProvider(
         source: Source,
     ): List<UniFile> {
         val mangaDir = findMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source) ?: return emptyList()
-        return mangaDir.listFiles().orEmpty().asList().filter {
-            chapters.find { chp ->
-                getValidChapterDirNames(chp.name, chp.scanlator, chp.url).any { dir ->
-                    mangaDir.findFile(dir) != null
-                }
-            } == null ||
-                it.name?.endsWith(Downloader.TMP_DIR_SUFFIX) == true
+        // KMK -->
+        val knownChapterDirNames = chapters
+            .flatMap { getValidChapterDirNames(it.name, it.scanlator, it.url) }
+            .toSet()
+        return mangaDir.listFiles().orEmpty().asList().filter { file ->
+            val name = file.name ?: return@filter false
+            name.endsWith(Downloader.TMP_DIR_SUFFIX) ||
+                (name !in knownChapterDirNames && name != "ComicInfo.xml" && name != ".nomedia")
         }
+        // KMK <--
     }
     // SY <--
 
@@ -269,26 +271,28 @@ class DownloadProvider(
             },
         )
 
-        // Get the filename that would be generated if the user were
-        // using the other value for the disallow non-ASCII or non-hash
-        // filenames setting. This ensures that chapters downloaded
-        // before the user changed the setting can still be found.
-        val otherChapterDirName =
-            getChapterDirName(
-                chapterName,
-                chapterScanlator,
-                chapterUrl,
-                !libraryPreferences.disallowNonAsciiFilenames().get(),
-                // SY -->
-                !downloadPreferences.includeChapterUrlHash().get(),
-                // SY <--
-            )
-
-        return buildList(2) {
+        return buildList {
             // Chapter name without hash (unable to handle duplicate
             // chapter names)
             add(chapterNameV1)
-            add(otherChapterDirName)
+            // KMK -->
+            // Both naming preferences can change independently between downloads.
+            for (disallowNonAscii in listOf(false, true)) {
+                for (includeChapterUrlHash in listOf(false, true)) {
+                    add(
+                        getChapterDirName(
+                            chapterName,
+                            chapterScanlator,
+                            chapterUrl,
+                            disallowNonAscii,
+                            // SY -->
+                            includeChapterUrlHash,
+                            // SY <--
+                        ),
+                    )
+                }
+            }
+            // KMK <--
         }
     }
 

@@ -7,13 +7,14 @@ import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.source.local.io.LocalArchiveEntry
 
 class OfflineLibraryProjectionTest {
 
     @Test
-    fun `projects series and duplicate state from archive metadata`() {
+    fun `groups series and tracks duplicate state from archive metadata`() {
         val first = entry("Comics/Series 1.cbz")
         val second = entry("Comics/Series 2.cbz")
         val metadata = mapOf(
@@ -21,35 +22,27 @@ class OfflineLibraryProjectionTest {
             second.identity to OfflineArchiveMetadata(series = "Series", number = "2", contentHash = "duplicate"),
         )
 
-        val projection = buildOfflineLibraryProjection(
+        val series = groupOfflineLibrary(
             entries = listOf(first, second),
-            query = "Series",
-            recursive = true,
             sort = OfflineLibrarySort.TITLE,
             descending = false,
-            progress = emptyMap(),
-            favorites = emptySet(),
-            favoritesOnly = false,
-            status = OfflineReadingFilter.ALL,
             metadata = metadata,
-            duplicatesOnly = true,
         )
 
-        assertEquals(2, projection.filteredEntries.size)
-        assertEquals(1, projection.series.size)
-        assertEquals(2, projection.series.single().entries.size)
-        assertEquals(2, projection.duplicateCounts[first.identity])
-        assertEquals(2, projection.archiveCount)
-        assertEquals(2, projection.filteredArchiveCount)
+        assertEquals(1, series.size)
+        assertEquals("Series", series.single().title)
+        assertEquals(listOf(first, second), series.single().entries)
+        assertTrue(isOfflineDuplicate(first, metadata, setOf("duplicate")))
+        assertTrue(isOfflineDuplicate(second, metadata, setOf("duplicate")))
     }
 
     @Test
     fun `sidecar changes invalidate cached archive metadata identity`() {
         val archive = entry("Standalone.cbz")
 
-        val withSidecar = archive.copy(sidecarSize = 128, sidecarModified = 10L)
+        val changedArchive = archive.copy(size = 128, modified = 10L)
 
-        assertNotEquals(archive.identity, withSidecar.identity)
+        assertNotEquals(archive.identity, changedArchive.identity)
     }
 
     private fun entry(path: String): LocalArchiveEntry {

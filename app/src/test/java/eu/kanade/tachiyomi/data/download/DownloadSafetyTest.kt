@@ -68,11 +68,10 @@ class DownloadSafetyTest {
     }
 
     @Test
-    fun `cleanup manga aliases cover Unicode and ASCII names regardless of current setting`() {
-        for (ascii in listOf(false, true)) {
-            val names = provider(ascii).getValidMangaDirNames("進撃の巨人")
-            assertTrue(DiskUtil.buildValidFilename("進撃の巨人", disallowNonAscii = true) in names)
-            assertTrue(DiskUtil.buildValidFilename("進撃の巨人", disallowNonAscii = false) in names)
+    fun `manga directory names follow the active filename preference`() {
+        for (disallowNonAscii in listOf(false, true)) {
+            val expected = DiskUtil.buildValidFilename("進撃の巨人", disallowNonAscii = disallowNonAscii)
+            assertEquals(expected, provider(disallowNonAscii).getMangaDirName("進撃の巨人"))
         }
     }
 

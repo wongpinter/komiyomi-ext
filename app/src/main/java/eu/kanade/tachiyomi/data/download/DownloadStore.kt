@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -90,7 +91,8 @@ class DownloadStore(
     /**
      * Returns the list of downloads to restore. It should be called in a background thread.
      */
-    fun restore(): List<Download> {
+    suspend fun restore(): List<Download> {
+        sourceManager.isInitialized.first { it }
         val objs = preferences.all
             .mapNotNull { it.value as? String }
             .mapNotNull { deserialize(it) }
@@ -109,8 +111,10 @@ class DownloadStore(
             }
         }
 
-        // Clear the store, downloads will be added again immediately.
-        clear()
+        // KMK -->
+        // Downloader.addAllToQueue rewrites restored entries; keep records for unavailable sources
+        // so they can be recovered if the extension is installed later.
+        // KMK <--
         return downloads
     }
 

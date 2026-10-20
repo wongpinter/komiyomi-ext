@@ -81,6 +81,10 @@ internal class EpubStore(context: Context) {
     }
 
     private fun saveFolderSources(sources: List<FolderSource>) {
+        if (sources.isEmpty()) {
+            shelfPreferences.edit { remove("folderSources") }
+            return
+        }
         val entries = org.json.JSONArray()
         sources.forEach { source ->
             entries.put(org.json.JSONObject().put("uri", source.uri).put("name", source.name))
