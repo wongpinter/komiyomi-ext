@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -38,16 +39,46 @@ import tachiyomi.i18n.kmk.KMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.source.local.io.LocalArchiveEntry
 
+// KMK -->
+internal enum class FavoriteButtonVisualSize {
+    Standard,
+    Compact,
+}
+// KMK <--
+
+// KMK -->
 @Composable
-internal fun FavoriteButton(favorite: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))) {
-        Icon(
-            if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-            stringResource(if (favorite) KMR.strings.offline_remove_favorite else KMR.strings.offline_add_favorite),
-            tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        )
+internal fun FavoriteButton(
+    favorite: Boolean,
+    modifier: Modifier = Modifier,
+    visualSize: FavoriteButtonVisualSize = FavoriteButtonVisualSize.Standard,
+    onClick: () -> Unit,
+) {
+    val icon = if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder
+    val contentDescription = stringResource(if (favorite) KMR.strings.offline_remove_favorite else KMR.strings.offline_add_favorite)
+    val tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    val compact = visualSize == FavoriteButtonVisualSize.Compact
+
+    IconButton(
+        onClick = onClick,
+        modifier = if (compact) modifier else modifier.clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
+    ) {
+        if (compact) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(18.dp))
+            }
+        } else {
+            Icon(icon, contentDescription, tint = tint)
+        }
     }
 }
+// KMK <--
 
 @Composable
 internal fun archiveProgressLabel(progress: ArchiveReadingProgress?): String = when {
@@ -109,7 +140,7 @@ internal fun ArchiveLibraryTile(
             LocalArchiveCover(entry, model, revision, manga, Modifier.fillMaxWidth())
             // KMK <--
             Row(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
-                FavoriteButton(favorite, onClick = onFavorite)
+                FavoriteButton(favorite, visualSize = FavoriteButtonVisualSize.Compact, onClick = onFavorite)
             }
         }
         Text(
@@ -157,7 +188,7 @@ internal fun ArchiveSeriesTile(
             LocalArchiveCover(series.firstEntry, model, revision, manga, Modifier.fillMaxWidth())
             // KMK <--
             Row(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
-                FavoriteButton(favorite, onClick = onFavorite)
+                FavoriteButton(favorite, visualSize = FavoriteButtonVisualSize.Compact, onClick = onFavorite)
             }
         }
         Text(series.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
@@ -186,6 +217,7 @@ internal fun ContinueReadingShelf(
     revision: Int,
     // KMK -->
     mangaByUrl: Map<String, Manga> = emptyMap(),
+    metadata: Map<String, OfflineArchiveMetadata> = emptyMap(),
     // KMK <--
 ) {
     Column {
@@ -203,7 +235,7 @@ internal fun ContinueReadingShelf(
                     revision,
                     Modifier.width(128.dp),
                     // KMK -->
-                    manga = offlineMangaUrl(listOf(entry))?.let(mangaByUrl::get),
+                    manga = offlineMangaUrl(listOf(entry), offlineSeriesKey(entry, metadata))?.let(mangaByUrl::get),
                     // KMK <--
                 )
             }

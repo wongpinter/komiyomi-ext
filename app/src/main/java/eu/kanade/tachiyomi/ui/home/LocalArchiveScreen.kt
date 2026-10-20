@@ -575,6 +575,7 @@ class LocalArchiveScreen(
                                     state.revision,
                                     // KMK -->
                                     mangaByUrl = state.localMangaByUrl,
+                                    metadata = state.metadata,
                                     // KMK <--
                                 )
                             }
@@ -730,6 +731,7 @@ class LocalArchiveScreen(
                                     state.revision,
                                     // KMK -->
                                     mangaByUrl = state.localMangaByUrl,
+                                    metadata = state.metadata,
                                     // KMK <--
                                 )
                             }

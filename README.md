@@ -6,7 +6,7 @@
 
 <h1>Komiyomi Ext</h1>
 
-<p>Browse manga from source extensions, read local CBZ and CBR archives, and manage your library on Android.</p>
+<p>Browse manga from compatible source extensions, read local CBZ and CBR archives, and manage EPUB and PDF books on Android.</p>
 
 <p>
   <a href="https://github.com/wongpinter/komiyomi-ext/releases/latest">Download latest release</a> ·
@@ -26,7 +26,7 @@
 
 ## About
 
-Komiyomi Ext is an independently maintained Android manga reader for compatible source extensions, local CBZ/CBR archives, downloads, trackers, and a configurable reader. It has its own product identity, roadmap, releases, and services.
+Komiyomi Ext is an independently maintained Android manga reader for compatible source extensions, local CBZ/CBR archives, EPUB/PDF books, downloads, trackers, and configurable readers. It has its own product identity, roadmap, releases, and services.
 
 Komiyomi Ext is the extension-enabled app in the Komiyomi family. For a dedicated offline comic reader, see [Komiyomi](https://github.com/wongpinter/komiyomi).
 
@@ -34,10 +34,11 @@ Komiyomi Ext is the extension-enabled app in the Komiyomi family. For a dedicate
 
 - **Browse and discover manga:** Use compatible source extensions, search across sources, save searches, and explore feeds and recommendations.
 - **Read online or offline:** Configure reading direction, viewer modes, and page loading; bookmark pages and navigate by chapter, section, or page. Smart Resume can continue to the next chapter after your chosen completion threshold, and separate Android tasks let you keep multiple readers open.
-- **Manage a local CBZ/CBR library:** Scan a chosen folder and its subfolders without moving your archives. Group multi-part files into series, track progress and favorites, and browse with grid or list views, search, filters, and sorting.
+- **Manage a local manga library:** Scan a chosen folder and its subfolders for CBZ/CBR archives without moving them. Group multi-part files into series, track progress and favorites, and browse in grid or list views with search, filters, and sorting. From a local manga's detail screen, search installed extensions and apply a matching title, author, description, genres, status, and available cover. Saved metadata supplies the title and cover where available; the scanned cover and archive or folder name remain fallbacks.
 - **Open large archives efficiently:** Komiyomi Ext caches archive indexes and loads pages as needed, which can make later opens of large CBZ files faster.
+- **Read EPUB and PDF books:** Add files to the Ebook shelf or scan a selected folder. EPUB reading includes adjustable themes, fonts, text size, paged or scrolling layouts, table-of-contents navigation, bookmarks, and saved progress. The PDF reader supports contents navigation, text selection, bookmarks, and continuous or page-by-page layouts, with adjustable fit and color options. Ebook settings configure the shelf and reader defaults; screen-on behavior follows the app's reader preference.
 - **Download chapters:** Download in the background, set concurrent download limits, or queue all chapters. Optionally save downloaded chapters as CBZ files.
-- **Organize and back up your library:** Use categories, tags, saved searches, batch actions, source migration, and library/settings backups.
+- **Organize and back up your library:** Use categories, tags, saved searches, batch actions, source migration, and library/settings backups. Ebook backups preserve shelf and reader settings, reading positions, and bookmarks. Choose whether to include EPUB/PDF files; without the files, restore depends on the saved source locations remaining accessible.
 - **Sync reading progress:** Connect trackers including AniList, Bangumi, Kitsu, Kavita, MangaDex, MangaUpdates, MyAnimeList, Shikimori, Suwayomi, and Komga.
 - **Personalize the app:** Choose light, dark, or custom themes, including colors generated from a manga's cover.
 
@@ -47,7 +48,7 @@ Online source extensions are managed separately from this repository. Komiyomi E
 
 1. Download the latest Android APK from [Releases](https://github.com/wongpinter/komiyomi-ext/releases/latest).
 2. Install it on a device running Android 8.0 or newer.
-3. Open **Extensions** to add and manage compatible sources, or use the **Local** tab for your own archives.
+3. Open **Extensions** to add and manage compatible sources, use **Local** for your manga archives, or use **Ebook** for EPUB and PDF books.
 
 ## Set up a local CBZ/CBR library
 
@@ -56,6 +57,18 @@ Online source extensions are managed separately from this repository. Komiyomi E
 3. Open the **Local** tab. Use **Rescan folder** after adding or changing files.
 
 The selected folder may contain nested folders. Komiyomi Ext scans the archives where they are and does not move them. To save downloaded chapters as CBZ files under this folder, configure the option in **More → Settings → Downloads**.
+
+## Match metadata for a local manga
+
+1. Open a manga from **Local** to view its detail screen.
+2. Choose **Search metadata from extensions**. The search starts with the manga title and searches your installed extensions.
+3. Tap the matching result to apply its metadata and available cover to the local manga record.
+
+The Local library uses the saved title and cover where available. If the extension has no usable cover, the scanned cover remains; the archive or folder name is the title fallback.
+
+## Add EPUB and PDF books
+
+Open **Ebook** to import EPUB or PDF files, or add a folder source to scan. Use **More → Settings → Ebook** to set the shelf layout and sorting, default EPUB appearance, PDF view options, and the shared keep-screen-on preference.
 
 ## Build from source
 
