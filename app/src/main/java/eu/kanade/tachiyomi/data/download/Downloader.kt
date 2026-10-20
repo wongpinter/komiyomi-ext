@@ -410,10 +410,9 @@ class Downloader(
                 DataSaver.NoOp
             }
 
-            // Delete all temporary (unfinished) files
-            tmpDir.listFiles()
-                ?.filter { it.extension == "tmp" }
-                ?.forEach { it.delete() }
+            // KMK -->
+            val existingPageImages = indexExistingPageImages(tmpDir)
+            // KMK <--
 
             download.status = Download.State.DOWNLOADING
 
@@ -430,7 +429,9 @@ class Downloader(
                         }
                     }
 
-                    withIOContext { getOrDownloadImage(page, download, tmpDir, dataSaver) }
+                    // KMK -->
+                    withIOContext { getOrDownloadImage(page, download, tmpDir, dataSaver, existingPageImages) }
+                    // KMK <--
                     emit(page)
                 }
                     .flowOn(Dispatchers.IO)
@@ -486,6 +487,26 @@ class Downloader(
         }
     }
 
+    // KMK -->
+    private fun indexExistingPageImages(tmpDir: UniFile): Map<String, UniFile> {
+        val pageImages = linkedMapOf<String, UniFile>()
+        tmpDir.listFiles().orEmpty().forEach { file ->
+            if (file.extension == "tmp") {
+                file.delete()
+                return@forEach
+            }
+
+            val name = file.name.orEmpty()
+            val pageNumber = name.takeWhile { it in '0'..'9' }
+            val suffix = name.drop(pageNumber.length)
+            if (pageNumber.isNotEmpty() && (suffix.startsWith('.') || suffix.startsWith("__001"))) {
+                if (pageNumber !in pageImages) pageImages[pageNumber] = file
+            }
+        }
+        return pageImages
+    }
+    // KMK <--
+
     /**
      * Gets the image from the filesystem if it exists or downloads it otherwise.
      *
@@ -493,7 +514,15 @@ class Downloader(
      * @param download the download of the page.
      * @param tmpDir the temporary directory of the download.
      */
-    private suspend fun getOrDownloadImage(page: Page, download: Download, tmpDir: UniFile, dataSaver: DataSaver) {
+    private suspend fun getOrDownloadImage(
+        page: Page,
+        download: Download,
+        tmpDir: UniFile,
+        dataSaver: DataSaver,
+        // KMK -->
+        existingPageImages: Map<String, UniFile>,
+        // KMK <--
+    ) {
         // If the image URL is empty, do nothing
         if (page.imageUrl == null) {
             return
@@ -506,10 +535,9 @@ class Downloader(
         // Delete temp file if it exists
         tmpFile?.delete()
 
-        // Try to find the image file
-        val imageFile = tmpDir.listFiles()?.firstOrNull {
-            it.name!!.startsWith("$filename.") || it.name!!.startsWith("${filename}__001")
-        }
+        // KMK -->
+        val imageFile = existingPageImages[filename]
+        // KMK <--
 
         try {
             // If the image is already downloaded, do nothing. Otherwise download from network
@@ -521,7 +549,9 @@ class Downloader(
             }
 
             // When the page is ready, set page path, progress (just in case) and status
-            splitTallImageIfNeeded(page, tmpDir)
+            // KMK -->
+            splitTallImageIfNeeded(tmpDir, file, filename)
+            // KMK <--
 
             page.uri = file.uri
             page.progress = 100
@@ -613,22 +643,28 @@ class Downloader(
         return ImageUtil.getExtensionFromMimeType(mime) { file.openInputStream() }
     }
 
-    private fun splitTallImageIfNeeded(page: Page, tmpDir: UniFile) {
+    private fun splitTallImageIfNeeded(
+        tmpDir: UniFile,
+        // KMK -->
+        imageFile: UniFile,
+        filename: String,
+        // KMK <--
+    ) {
         if (!downloadPreferences.splitTallImages().get()) return
 
         try {
-            val filenamePrefix = "%03d".format(Locale.ENGLISH, page.number)
-            val imageFile = tmpDir.listFiles()?.firstOrNull { it.name.orEmpty().startsWith(filenamePrefix) }
-                ?: error(context.stringResource(MR.strings.download_notifier_split_page_not_found, page.number))
-
             // If the original page was previously split, then skip
-            if (imageFile.name.orEmpty().startsWith("${filenamePrefix}__")) return
+            // KMK -->
+            if (imageFile.name.orEmpty().startsWith("${filename}__")) return
+            // KMK <--
 
+            // KMK -->
             ImageUtil.splitTallImage(
                 tmpDir,
                 imageFile,
-                filenamePrefix,
+                filename,
             )
+            // KMK <--
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to split downloaded image" }
         }

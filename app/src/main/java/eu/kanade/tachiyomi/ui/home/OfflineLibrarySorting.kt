@@ -6,6 +6,11 @@ import tachiyomi.source.local.io.LocalArchiveEntry
 import java.math.BigDecimal
 
 // KMK -->
+private val SERIES_WHITESPACE_REGEX = Regex("\\s+")
+private val CHAPTER_NUMBER_REGEX = Regex("^\\s*([+-]?\\d+(?:\\.\\d+)?)")
+// KMK <--
+
+// KMK -->
 data class OfflineArchiveMetadata(
     val series: String? = null,
     val number: String? = null,
@@ -89,18 +94,29 @@ internal fun groupOfflineLibrary(
 internal fun sortOfflineChapters(
     entries: List<LocalArchiveEntry>,
     metadata: Map<String, OfflineArchiveMetadata>,
-): List<LocalArchiveEntry> = entries.sortedWith { first, second ->
-    val firstNumber = metadata[first.identity]?.number.cleanMetadata()?.toChapterNumber()
-    val secondNumber = metadata[second.identity]?.number.cleanMetadata()?.toChapterNumber()
-    when {
-        firstNumber != null && secondNumber != null -> firstNumber.compareTo(secondNumber)
-        firstNumber != null -> -1
-        secondNumber != null -> 1
-        else -> 0
-    }.takeIf { it != 0 }
-        ?: first.title.compareToCaseInsensitiveNaturalOrder(second.title).takeIf { it != 0 }
-        ?: first.path.compareToCaseInsensitiveNaturalOrder(second.path)
+): List<LocalArchiveEntry> {
+    val chapters = entries.map { entry ->
+        NumberedArchiveEntry(
+            entry = entry,
+            number = metadata[entry.identity]?.number.cleanMetadata()?.toChapterNumber(),
+        )
+    }
+    return chapters.sortedWith { first, second ->
+        when {
+            first.number != null && second.number != null -> first.number.compareTo(second.number)
+            first.number != null -> -1
+            second.number != null -> 1
+            else -> 0
+        }.takeIf { it != 0 }
+            ?: first.entry.title.compareToCaseInsensitiveNaturalOrder(second.entry.title).takeIf { it != 0 }
+            ?: first.entry.path.compareToCaseInsensitiveNaturalOrder(second.entry.path)
+    }.map { it.entry }
 }
+
+private data class NumberedArchiveEntry(
+    val entry: LocalArchiveEntry,
+    val number: BigDecimal?,
+)
 
 internal fun isOfflineDuplicate(
     entry: LocalArchiveEntry,
@@ -122,10 +138,10 @@ internal fun offlineSeriesKey(
 
 private fun String?.cleanMetadata(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
-private fun String.normalizedSeriesName(): String = trim().replace(Regex("\\s+"), " ").lowercase()
+private fun String.normalizedSeriesName(): String = trim().replace(SERIES_WHITESPACE_REGEX, " ").lowercase()
 
 private fun String.toChapterNumber(): BigDecimal? {
-    val number = Regex("^\\s*([+-]?\\d+(?:\\.\\d+)?)").find(this)?.groupValues?.getOrNull(1) ?: return null
+    val number = CHAPTER_NUMBER_REGEX.find(this)?.groupValues?.getOrNull(1) ?: return null
     return runCatching { number.toBigDecimal() }.getOrNull()
 }
 // KMK <--

@@ -183,18 +183,37 @@ class LocalArchiveScreen(
         // KMK <--
         val status = OfflineReadingFilter.entries.firstOrNull { it.name == statusValue } ?: OfflineReadingFilter.ALL
         val sort = OfflineLibrarySort.entries.firstOrNull { it.name == sortValue } ?: OfflineLibrarySort.TITLE
-        val filtered = remember(state.entries, query, sort, descending, state.progress, favorites, favoritesOnly, status, state.metadata, duplicatesOnly, duplicateHashes, state.localMangaByUrl) {
+        // KMK -->
+        val filteringProgress = if (status == OfflineReadingFilter.ALL) emptyMap() else state.progress
+        val filteringFavorites = if (favoritesOnly) favorites else emptySet()
+        val filteringMetadata = if (query.isNotBlank() || duplicatesOnly) state.metadata else emptyMap()
+        val filteringDuplicateHashes = if (duplicatesOnly) duplicateHashes else emptySet()
+        val filteringLocalManga = if (query.isNotBlank()) state.localMangaByUrl else emptyMap()
+        val filtered = remember(
+            state.entries,
+            query,
+            sort,
+            descending,
+            filteringProgress,
+            filteringFavorites,
+            favoritesOnly,
+            status,
+            filteringMetadata,
+            duplicatesOnly,
+            filteringDuplicateHashes,
+            filteringLocalManga,
+        ) {
             val matches = state.entries.filter { entry ->
-                val progress = state.progress[entry.path]
-                val archiveMetadata = state.metadata[entry.identity]
-                val localTitle = offlineMangaUrl(listOf(entry), offlineSeriesKey(entry, state.metadata))
-                    ?.let(state.localMangaByUrl::get)
+                val progress = filteringProgress[entry.path]
+                val archiveMetadata = filteringMetadata[entry.identity]
+                val localTitle = offlineMangaUrl(listOf(entry), offlineSeriesKey(entry, filteringMetadata))
+                    ?.let(filteringLocalManga::get)
                     ?.title
                 (entry.name.contains(query, true) || (recursive && entry.path.contains(query, true)) || archiveMetadata?.series?.contains(query, true) == true || localTitle?.contains(query, true) == true) &&
                     (
                         !recursive || (
-                            (!favoritesOnly || entry.file.uri.toString() in favorites) &&
-                                (!duplicatesOnly || isOfflineDuplicate(entry, state.metadata, duplicateHashes)) && when (status) {
+                            (!favoritesOnly || entry.file.uri.toString() in filteringFavorites) &&
+                                (!duplicatesOnly || isOfflineDuplicate(entry, filteringMetadata, filteringDuplicateHashes)) && when (status) {
                                     OfflineReadingFilter.ALL -> true
                                     OfflineReadingFilter.UNREAD -> progress?.started != true
                                     OfflineReadingFilter.READING -> progress?.started == true && !progress.completed
@@ -205,8 +224,15 @@ class LocalArchiveScreen(
             }
             if (recursive) sortOfflineLibrary(matches, sort, descending) else matches
         }
-        val series = remember(filtered, sort, descending, state.metadata, state.localMangaByUrl) {
-            groupOfflineLibrary(filtered, sort, descending, state.metadata).map { item ->
+        // KMK <--
+        // KMK -->
+        val hasAllSeriesEntries = query.isBlank() && !favoritesOnly && !duplicatesOnly && status == OfflineReadingFilter.ALL
+        val allSeriesEntries = if (hasAllSeriesEntries) filtered else state.entries
+        val allSeriesBase = remember(allSeriesEntries, sort, descending, state.metadata) {
+            groupOfflineLibrary(allSeriesEntries, sort, descending, state.metadata)
+        }
+        val allSeries = remember(allSeriesBase, state.localMangaByUrl) {
+            allSeriesBase.map { item ->
                 val localTitle = offlineMangaUrl(item.entries, item.key)
                     ?.let(state.localMangaByUrl::get)
                     ?.title
@@ -214,14 +240,24 @@ class LocalArchiveScreen(
                 if (localTitle == null) item else item.copy(title = localTitle)
             }
         }
-        // KMK -->
-        val allSeries = remember(state.entries, sort, descending, state.metadata, state.localMangaByUrl) {
-            groupOfflineLibrary(state.entries, sort, descending, state.metadata).map { item ->
-                val localTitle = offlineMangaUrl(item.entries, item.key)
-                    ?.let(state.localMangaByUrl::get)
-                    ?.title
-                    ?.takeIf { it.isNotBlank() }
-                if (localTitle == null) item else item.copy(title = localTitle)
+        val seriesBase = remember(filtered, sort, descending, state.metadata, hasAllSeriesEntries, allSeriesBase) {
+            if (hasAllSeriesEntries) {
+                allSeriesBase
+            } else {
+                groupOfflineLibrary(filtered, sort, descending, state.metadata)
+            }
+        }
+        val series = remember(seriesBase, state.localMangaByUrl, hasAllSeriesEntries, allSeries) {
+            if (hasAllSeriesEntries) {
+                allSeries
+            } else {
+                seriesBase.map { item ->
+                    val localTitle = offlineMangaUrl(item.entries, item.key)
+                        ?.let(state.localMangaByUrl::get)
+                        ?.title
+                        ?.takeIf { it.isNotBlank() }
+                    if (localTitle == null) item else item.copy(title = localTitle)
+                }
             }
         }
         val selectedSeries = remember(allSeries, selectedSeriesKey) { allSeries.firstOrNull { it.key == selectedSeriesKey } }
@@ -243,7 +279,7 @@ class LocalArchiveScreen(
                 }
                 .sortedByDescending { state.progress[it.path]?.lastRead ?: 0 }.take(10)
         }
-        val standaloneArchives = remember(filtered, sort, descending) {
+        val standaloneArchives = remember(filtered, sort, descending, state.metadata) {
             sortOfflineLibrary(
                 filtered.filter { !it.isDirectory && it.parentPath.isEmpty() && offlineSeriesKey(it, state.metadata) == null },
                 sort,
