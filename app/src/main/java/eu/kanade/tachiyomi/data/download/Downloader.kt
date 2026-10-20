@@ -749,7 +749,7 @@ class Downloader(
         val localRoot = storageManager.getLocalSourceDirectory()
             ?: throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
         val mangaName = "${download.manga.ogTitle} (${download.source.name})"
-        return localRoot.createDirectory(provider.getMangaDirName(mangaName))
+        return provider.getOrCreateDirectory(localRoot, provider.getMangaDirName(mangaName))
             ?: throw IOException(context.stringResource(KMR.strings.offline_folder_unavailable))
     }
     // KMK <--

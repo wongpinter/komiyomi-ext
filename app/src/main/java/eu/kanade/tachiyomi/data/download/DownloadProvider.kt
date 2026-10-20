@@ -44,6 +44,9 @@ class DownloadProvider(
      * @param mangaTitle the title of the manga to query.
      * @param source the source of the manga.
      */
+    // KMK -->
+    @Synchronized
+    // KMK <--
     internal fun getMangaDir(mangaTitle: String, source: Source): Result<UniFile> {
         val downloadsDir = downloadsDir
         if (downloadsDir == null) {
@@ -54,7 +57,9 @@ class DownloadProvider(
         }
 
         val sourceDirName = getSourceDirName(source)
-        val sourceDir = downloadsDir.createDirectory(sourceDirName)
+        // KMK -->
+        val sourceDir = getOrCreateDirectory(downloadsDir, sourceDirName)
+        // KMK <--
         if (sourceDir == null) {
             val displayablePath = downloadsDir.displayablePath + "/$sourceDirName"
             logcat(LogPriority.ERROR) { "Failed to create source download directory: $displayablePath" }
@@ -64,7 +69,9 @@ class DownloadProvider(
         }
 
         val mangaDirName = getMangaDirName(mangaTitle)
-        val mangaDir = sourceDir.createDirectory(mangaDirName)
+        // KMK -->
+        val mangaDir = getOrCreateDirectory(sourceDir, mangaDirName)
+        // KMK <--
         if (mangaDir == null) {
             val displayablePath = sourceDir.displayablePath + "/$mangaDirName"
             logcat(LogPriority.ERROR) { "Failed to create manga download directory: $displayablePath" }
@@ -75,6 +82,19 @@ class DownloadProvider(
 
         return Result.success(mangaDir)
     }
+
+    // KMK -->
+    /**
+     * Reuses a shared parent directory before creating it. Parallel chapter downloads can request
+     * the same source and manga folders at the same time.
+     */
+    @Synchronized
+    internal fun getOrCreateDirectory(parent: UniFile, directoryName: String): UniFile? {
+        val existing = parent.findFile(directoryName)
+        if (existing != null) return existing.takeIf { it.isDirectory }
+        return parent.createDirectory(directoryName)?.takeIf { it.isDirectory }
+    }
+    // KMK <--
 
     /**
      * Returns the download directory for a source if it exists.
