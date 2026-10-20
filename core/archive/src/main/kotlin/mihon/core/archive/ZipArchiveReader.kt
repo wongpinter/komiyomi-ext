@@ -1,7 +1,6 @@
 // KMK -->
 package mihon.core.archive
 
-import android.os.SystemClock
 import android.util.AtomicFile
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
@@ -33,7 +32,7 @@ internal class ZipArchiveReader(
 
     private val lock = Any()
     private val archiveSize = channel.size()
-    private val indexLoadStartedAt = SystemClock.elapsedRealtime()
+    private val indexLoadStartedAt = System.nanoTime()
     private val indexCache = indexCacheFile?.let { AtomicFile(it) }
     private val cacheLock = indexCacheFile?.let {
         cacheLocks[(it.absolutePath.hashCode() and Int.MAX_VALUE) % cacheLocks.size]
@@ -55,7 +54,7 @@ internal class ZipArchiveReader(
 
     init {
         logcat(LogPriority.INFO) {
-            "ZIP index ready: cacheHit=$indexCacheHit entries=${entries.size} elapsedMs=${SystemClock.elapsedRealtime() - indexLoadStartedAt}"
+            "ZIP index ready: cacheHit=$indexCacheHit entries=${entries.size} elapsedMs=${(System.nanoTime() - indexLoadStartedAt) / 1_000_000}"
         }
     }
 

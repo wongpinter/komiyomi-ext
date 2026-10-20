@@ -47,7 +47,13 @@ object ImageUtil {
         // SY <--
 
         val extension = name.substringAfterLast('.')
-        return ImageType.entries.any { it.extension == extension } || openStream?.let { findImageType(it) } != null
+        // KMK -->
+        return ImageType.entries.any { type ->
+            type.extension.equals(extension, ignoreCase = true) ||
+                imageExtensionAliases[type].orEmpty().any { it.equals(extension, ignoreCase = true) }
+        } ||
+            openStream?.let { findImageType(it) } != null
+        // KMK <--
     }
 
     fun findImageType(openStream: () -> InputStream): ImageType? {
@@ -119,6 +125,13 @@ object ImageUtil {
         PNG("image/png", "png"),
         WEBP("image/webp", "webp"),
     }
+
+    // KMK -->
+    private val imageExtensionAliases = mapOf(
+        ImageType.JPEG to setOf("jpeg", "jpe", "jfif"),
+        ImageType.HEIF to setOf("heic"),
+    )
+    // KMK <--
 
     /**
      * Check whether the image is wide (which we consider a double-page spread).
