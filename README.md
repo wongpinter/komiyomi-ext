@@ -1,10 +1,10 @@
 <div align="center">
 
-<a href="https://github.com/wongpinter/komiyomi-ext">
-  <img width="200" height="200" src="./branding/komiyomi-ext-icon.svg" alt="Komiyomi Ext icon"/>
-</a>
-
-<h1>Komiyomi Ext</h1>
+<h1>
+  <a href="https://github.com/wongpinter/komiyomi-ext">
+    <img width="360" height="81" src="./branding/komiyomi-ext-logo.svg" alt="Komiyomi Ext"/>
+  </a>
+</h1>
 
 <p>Browse manga from compatible source extensions, read local CBZ and CBR archives, and manage EPUB and PDF books on Android.</p>
 
@@ -22,7 +22,13 @@
 
 </div>
 
-![Komiyomi Ext screenshots showing recommendations, cover-based colors, bulk library actions, and custom themes](./.github/readme-images/screens.png)
+<p align="center">
+  <img width="220" src="./docs/screenshots/00-current.png" alt="Current local manga library"/>
+  <img width="220" src="./docs/screenshots/04-ebook.png" alt="Ebook shelf"/>
+  <img width="220" src="./docs/screenshots/10-local-detail.png" alt="Local manga details and chapters"/>
+</p>
+
+<p align="center"><a href="./docs/screenshots/README.md">See all current app screenshots</a></p>
 
 ## About
 
