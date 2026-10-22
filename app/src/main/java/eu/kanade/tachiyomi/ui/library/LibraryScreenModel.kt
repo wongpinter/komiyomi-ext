@@ -902,6 +902,7 @@ class LibraryScreenModel(
             DownloadAction.BOOKMARKED_CHAPTERS -> downloadBookmarkedChapters()
             // KMK -->
             DownloadAction.ALL_CHAPTERS -> downloadAllChapters()
+            DownloadAction.CREATE_CBZ -> Unit
             // KMK <--
         }
         clearSelection()

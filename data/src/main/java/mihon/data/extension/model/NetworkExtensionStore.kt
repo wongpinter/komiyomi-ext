@@ -7,6 +7,9 @@ import kotlinx.serialization.protobuf.ProtoNumber
 import mihon.data.extension.model.NetworkExtensionStore.ContentWarning
 import mihon.data.extension.model.NetworkExtensionStore.ExtensionList
 import mihon.domain.extension.model.ExtensionStore
+// KMK -->
+import eu.kanade.tachiyomi.extension.model.ExtensionContentWarning
+// KMK <--
 import eu.kanade.tachiyomi.extension.model.Extension as TachiyomiExtension
 
 @SuppressLint("UnsafeOptInUsageError")
@@ -106,6 +109,12 @@ fun ExtensionList.toAvailableExtensions(store: ExtensionStore): List<TachiyomiEx
             lang = if (lang.size == 1) lang.first() else "all",
             isNsfw = extension.contentWarning >= ContentWarning.MIXED,
             // KMK -->
+            contentWarning = when (extension.contentWarning) {
+                ContentWarning.UNSPECIFIED -> ExtensionContentWarning.UNSPECIFIED
+                ContentWarning.SAFE -> ExtensionContentWarning.SAFE
+                ContentWarning.MIXED -> ExtensionContentWarning.MIXED
+                ContentWarning.NSFW -> ExtensionContentWarning.NSFW
+            },
             signatureHash = store.signingKey,
             storeName = store.name,
             // KMK <--

@@ -28,6 +28,9 @@
     <string name="metadata_search_result_guidance">Tap a result to save its details and cover to this local manga.</string>
     <string name="local_manga_metadata_updated">Local manga metadata updated</string>
     <string name="local_manga_metadata_update_failed">Could not update local manga metadata</string>
+    <string name="action_toggle_sfw_mixed_only">Toggle SAFE + MIXED only</string>
+    <string name="create_combined_cbz">Create combined CBZ</string>
+    <string name="combined_cbz_no_downloaded_chapters">Download all chapters before creating a combined CBZ.</string>
     <!-- KMK END -->
         <!-- History section -->
     <string name="action_filter_unfinished_manga">Unfinished manga</string>

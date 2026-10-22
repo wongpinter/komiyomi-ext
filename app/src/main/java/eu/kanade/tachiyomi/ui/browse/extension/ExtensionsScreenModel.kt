@@ -11,6 +11,9 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+// KMK -->
+import eu.kanade.tachiyomi.extension.model.ExtensionContentWarning
+// KMK <--
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -68,17 +71,18 @@ class ExtensionsScreenModel(
                     .debounce(SEARCH_DEBOUNCE_MILLIS)
                     .map { searchQueryPredicate(it ?: "") },
                 // KMK -->
-                state.map { it.nsfwOnly }
+                state.map { it.nsfwOnly to it.sfwOnly }
                     .distinctUntilChanged()
                     .debounce(SEARCH_DEBOUNCE_MILLIS),
                 // KMK <--
                 currentDownloads,
                 getExtensions.subscribe(),
-            ) { predicate, nsfwOnly, downloads, (_updates, _installed, _available, _untrusted) ->
+            ) { predicate, contentFilters, downloads, (_updates, _installed, _available, _untrusted) ->
+                val (nsfwOnly, sfwOnly) = contentFilters
                 buildMap {
                     val updates = _updates.filter(predicate).map(extensionMapper(downloads))
                         // KMK -->
-                        .filter { !nsfwOnly || it.extension.isNsfw }
+                        .filter { matchesContentFilter(it.extension, nsfwOnly, sfwOnly) }
                     // KMK <--
                     if (updates.isNotEmpty()) {
                         put(ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending), updates)
@@ -86,11 +90,11 @@ class ExtensionsScreenModel(
 
                     val installed = _installed.filter(predicate).map(extensionMapper(downloads))
                         // KMK -->
-                        .filter { !nsfwOnly || it.extension.isNsfw }
+                        .filter { matchesContentFilter(it.extension, nsfwOnly, sfwOnly) }
                     // KMK <--
                     val untrusted = _untrusted.filter(predicate).map(extensionMapper(downloads))
                         // KMK -->
-                        .filter { !nsfwOnly || it.extension.isNsfw }
+                        .filter { matchesContentFilter(it.extension, nsfwOnly, sfwOnly) }
                     // KMK <--
                     if (installed.isNotEmpty() || untrusted.isNotEmpty()) {
                         put(ExtensionUiModel.Header.Resource(MR.strings.ext_installed), installed + untrusted)
@@ -99,7 +103,7 @@ class ExtensionsScreenModel(
                     val languagesWithExtensions = _available
                         .filter(predicate)
                         // KMK -->
-                        .filter { !nsfwOnly || it.isNsfw }
+                        .filter { matchesContentFilter(it, nsfwOnly, sfwOnly) }
                         // KMK <--
                         .groupBy { it.lang }
                         .toSortedMap(LocaleHelper.comparator)
@@ -257,9 +261,23 @@ class ExtensionsScreenModel(
     }
 
     // KMK -->
+    private fun matchesContentFilter(extension: Extension, nsfwOnly: Boolean, sfwOnly: Boolean): Boolean = when {
+        nsfwOnly -> extension.contentWarning == ExtensionContentWarning.NSFW
+        sfwOnly -> extension.contentWarning.isSfwOrMixed
+        else -> true
+    }
+
     fun toggleNsfwOnly() {
         mutableState.update {
-            it.copy(nsfwOnly = !it.nsfwOnly)
+            val nsfwOnly = !it.nsfwOnly
+            it.copy(nsfwOnly = nsfwOnly, sfwOnly = !nsfwOnly)
+        }
+    }
+
+    fun toggleSfwOnly() {
+        mutableState.update {
+            val sfwOnly = !it.sfwOnly
+            it.copy(sfwOnly = sfwOnly, nsfwOnly = !sfwOnly)
         }
     }
     // KMK <--
@@ -274,6 +292,7 @@ class ExtensionsScreenModel(
         val searchQuery: String? = null,
         // KMK -->
         val nsfwOnly: Boolean = false,
+        val sfwOnly: Boolean = true,
         // KMK <--
     ) {
         val isEmpty = items.isEmpty()

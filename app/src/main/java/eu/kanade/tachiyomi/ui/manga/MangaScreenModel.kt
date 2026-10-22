@@ -1274,6 +1274,14 @@ class MangaScreenModel(
             .filter { (_, dlStatus) -> dlStatus == Download.State.NOT_DOWNLOADED }
             .map { it.chapter }
     }
+
+    private fun getChaptersForCombinedCbz(): List<Chapter>? {
+        val chapterItems = if (skipFiltered) filteredChapters.orEmpty() else allChapters.orEmpty()
+        if (chapterItems.isEmpty() || chapterItems.any { (_, dlStatus) -> dlStatus != Download.State.DOWNLOADED }) {
+            return null
+        }
+        return chapterItems.map { it.chapter }
+    }
     // KMK <--
 
     private fun getUnreadChaptersSorted(): List<Chapter> {
@@ -1350,6 +1358,19 @@ class MangaScreenModel(
     }
 
     fun runDownloadAction(action: DownloadAction) {
+        // KMK -->
+        if (action == DownloadAction.CREATE_CBZ) {
+            val chapters = getChaptersForCombinedCbz()
+            if (chapters == null) {
+                screenModelScope.launch {
+                    snackbarHostState.showSnackbar(context.stringResource(KMR.strings.combined_cbz_no_downloaded_chapters))
+                }
+            } else {
+                downloadChapters(emptyList(), chapters)
+            }
+            return
+        }
+        // KMK <--
         val chaptersToDownload = when (action) {
             DownloadAction.NEXT_1_CHAPTER -> getUnreadChaptersSorted().take(1)
             DownloadAction.NEXT_5_CHAPTERS -> getUnreadChaptersSorted().take(5)
@@ -1357,13 +1378,16 @@ class MangaScreenModel(
             DownloadAction.NEXT_25_CHAPTERS -> getUnreadChaptersSorted().take(25)
             // KMK -->
             DownloadAction.ALL_CHAPTERS -> getAllUndownloadedChapters()
+            DownloadAction.CREATE_CBZ -> emptyList()
             // KMK <--
             DownloadAction.UNREAD_CHAPTERS -> getUnreadChapters()
             DownloadAction.BOOKMARKED_CHAPTERS -> getBookmarkedChapters()
         }
+        // KMK -->
         if (chaptersToDownload.isNotEmpty()) {
             startDownload(chaptersToDownload, false)
         }
+        // KMK <--
     }
 
     private fun cancelDownload(chapterId: Long) {
@@ -1456,18 +1480,33 @@ class MangaScreenModel(
      * Downloads the given list of chapters with the manager.
      * @param chapters the list of chapters to download.
      */
-    private fun downloadChapters(chapters: List<Chapter>) {
+    private fun downloadChapters(
+        chapters: List<Chapter>,
+        // KMK -->
+        combineCbzChapters: List<Chapter>? = null,
+        // KMK <--
+    ) {
         // SY -->
         val state = successState ?: return
         if (state.source is MergedSource) {
-            chapters.groupBy { it.mangaId }.forEach { map ->
-                val manga = state.mergedData?.manga?.get(map.key) ?: return@forEach
-                downloadManager.downloadChapters(manga, map.value)
+            // KMK -->
+            val downloadGroups = chapters.groupBy { it.mangaId }
+            val combineGroups = combineCbzChapters.orEmpty().groupBy { it.mangaId }
+            (downloadGroups.keys + combineGroups.keys).distinct().forEach { mangaId ->
+                val manga = state.mergedData?.manga?.get(mangaId) ?: return@forEach
+                downloadManager.downloadChapters(
+                    manga,
+                    downloadGroups[mangaId].orEmpty(),
+                    combineCbzChapters = combineGroups[mangaId],
+                )
             }
+            // KMK <--
         } else {
             // SY <--
             val manga = state.manga
-            downloadManager.downloadChapters(manga, chapters)
+            // KMK -->
+            downloadManager.downloadChapters(manga, chapters, combineCbzChapters = combineCbzChapters)
+            // KMK <--
         }
         toggleAllSelection(false)
     }

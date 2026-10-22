@@ -9,6 +9,9 @@ import androidx.core.content.pm.PackageInfoCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.model.Extension
+// KMK -->
+import eu.kanade.tachiyomi.extension.model.ExtensionContentWarning
+// KMK <--
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
@@ -282,6 +285,17 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
+        // KMK -->
+        val manifestContentWarning = appInfo.metaData.getInt(METADATA_CONTENT_WARNING)
+        val contentWarning = when {
+            appInfo.metaData.getInt(METADATA_NSFW) == 1 -> ExtensionContentWarning.NSFW
+            appInfo.metaData.containsKey(METADATA_CONTENT_WARNING) ->
+                ExtensionContentWarning.fromManifestValue(manifestContentWarning)
+            else -> ExtensionContentWarning.SAFE
+        }
+        val isNsfw = manifestContentWarning > 0 || appInfo.metaData.getInt(METADATA_NSFW) == 1
+        // KMK <--
+
         val signatures = getSignatures(pkgInfo)
         if (signatures.isNullOrEmpty()) {
             logcat(LogPriority.WARN) { "Package $pkgName isn't signed" }
@@ -295,6 +309,8 @@ internal object ExtensionLoader {
                 libVersion,
                 signatures.last(),
                 // KMK -->
+                isNsfw = isNsfw,
+                contentWarning = contentWarning,
                 storeName = stores.firstOrNull { store ->
                     signatures.all { it == store.signingKey }
                 }?.let { store ->
@@ -306,8 +322,6 @@ internal object ExtensionLoader {
             return LoadResult.Untrusted(extension)
         }
 
-        val isNsfw = appInfo.metaData.getInt(METADATA_CONTENT_WARNING) > 0 ||
-            appInfo.metaData.getInt(METADATA_NSFW) == 1
         if (!loadNsfwSource && isNsfw) {
             logcat(LogPriority.WARN) { "NSFW extension $pkgName not allowed" }
             return LoadResult.Error
@@ -363,6 +377,7 @@ internal object ExtensionLoader {
             icon = appInfo.loadIcon(pkgManager),
             isShared = extensionInfo.isShared,
             // KMK -->
+            contentWarning = contentWarning,
             signatureHash = signatures.last(),
             storeName = stores.firstOrNull { store ->
                 signatures.all { it == store.signingKey }

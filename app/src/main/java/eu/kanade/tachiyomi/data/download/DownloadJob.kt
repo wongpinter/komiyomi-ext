@@ -15,6 +15,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
+// KMK -->
+import eu.kanade.tachiyomi.data.download.model.Download
+// KMK <--
 import eu.kanade.tachiyomi.util.system.NetworkState
 import eu.kanade.tachiyomi.util.system.activeNetworkState
 import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
@@ -61,10 +64,12 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
     }
 
     override suspend fun doWork(): Result {
-        var networkCheck = checkNetworkState(
+        // KMK -->
+        var networkCheck = !queueNeedsNetwork() || checkNetworkState(
             applicationContext.activeNetworkState(),
             downloadPreferences.downloadOnlyOverWifi().get(),
         )
+        // KMK <--
         var active = networkCheck && downloadManager.downloaderStart()
 
         if (!active) {
@@ -77,7 +82,15 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
             combineTransform(
                 applicationContext.networkStateFlow(),
                 downloadPreferences.downloadOnlyOverWifi().changes(),
-                transform = { a, b -> emit(checkNetworkState(a, b)) },
+                // KMK -->
+                downloadManager.queueState,
+                transform = { a, b, queue ->
+                    emit(
+                        queue.none { it.status.value <= Download.State.DOWNLOADING.value } ||
+                            checkNetworkState(a, b),
+                    )
+                },
+                // KMK <--
             )
                 .onEach { networkCheck = it }
                 .launchIn(this)
@@ -105,6 +118,12 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
             false
         }
     }
+
+    // KMK -->
+    private fun queueNeedsNetwork(): Boolean = downloadManager.queueState.value.any {
+        it.status.value <= Download.State.DOWNLOADING.value
+    }
+    // KMK <--
 
     companion object {
         private const val TAG = "Downloader"

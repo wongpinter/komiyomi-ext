@@ -83,6 +83,9 @@ class ArchiveInputStream(
                 // SY -->
                 isEncrypted,
                 // SY <--
+                // KMK -->
+                ArchiveEntry.size(entry),
+                // KMK <--
             )
         }
     }

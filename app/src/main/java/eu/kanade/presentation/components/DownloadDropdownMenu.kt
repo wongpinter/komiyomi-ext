@@ -19,6 +19,9 @@ fun DownloadDropdownMenu(
     onDownloadClicked: (DownloadAction) -> Unit,
     modifier: Modifier = Modifier,
     offset: DpOffset = /* KMK --> */ DefaultDropdownMenuOffset, /* KMK <-- */
+    // KMK -->
+    includeCreateCbz: Boolean = false,
+    // KMK <--
 ) {
     DropdownMenu(
         expanded = expanded,
@@ -29,6 +32,9 @@ fun DownloadDropdownMenu(
             DownloadDropdownMenuItems(
                 onDismissRequest = onDismissRequest,
                 onDownloadClicked = onDownloadClicked,
+                // KMK -->
+                includeCreateCbz = includeCreateCbz,
+                // KMK <--
             )
         },
     )
@@ -38,6 +44,9 @@ fun DownloadDropdownMenu(
 private fun DownloadDropdownMenuItems(
     onDismissRequest: () -> Unit,
     onDownloadClicked: (DownloadAction) -> Unit,
+    // KMK -->
+    includeCreateCbz: Boolean,
+    // KMK <--
 ) {
     val options = persistentListOf(
         DownloadAction.NEXT_1_CHAPTER to pluralStringResource(MR.plurals.download_amount, 1, 1),
@@ -50,8 +59,17 @@ private fun DownloadDropdownMenuItems(
         DownloadAction.UNREAD_CHAPTERS to stringResource(MR.strings.download_unread),
         DownloadAction.BOOKMARKED_CHAPTERS to stringResource(MR.strings.download_bookmarked),
     )
+    // KMK -->
+    val availableOptions = if (includeCreateCbz) {
+        options + (DownloadAction.CREATE_CBZ to stringResource(KMR.strings.create_combined_cbz))
+    } else {
+        options
+    }
+    // KMK <--
 
-    options.forEach { (downloadAction, string) ->
+    // KMK -->
+    availableOptions.forEach { (downloadAction, string) ->
+    // KMK <--
         DropdownMenuItem(
             text = { Text(text = string) },
             onClick = {

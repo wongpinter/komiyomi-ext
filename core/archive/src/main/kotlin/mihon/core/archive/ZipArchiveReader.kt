@@ -59,7 +59,11 @@ internal class ZipArchiveReader(
     }
 
     fun <T> useEntries(block: (Sequence<ArchiveEntry>) -> T): T = block(
-        entries.asSequence().map { ArchiveEntry(it.name, !it.name.endsWith('/'), false) },
+        entries.asSequence().map {
+            // KMK -->
+            ArchiveEntry(it.name, !it.name.endsWith('/'), false, it.size)
+            // KMK <--
+        },
     )
 
     fun getInputStream(entryName: String): InputStream? {

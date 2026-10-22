@@ -2,6 +2,9 @@ package mihon.data.extension.model
 
 import android.annotation.SuppressLint
 import eu.kanade.tachiyomi.extension.model.Extension
+// KMK -->
+import eu.kanade.tachiyomi.extension.model.ExtensionContentWarning
+// KMK <--
 import kotlinx.serialization.Serializable
 import mihon.domain.extension.model.ExtensionStore
 
@@ -37,6 +40,7 @@ data class NetworkLegacyExtension(
             lang = lang,
             isNsfw = nsfw == 1,
             // KMK -->
+            contentWarning = if (nsfw == 1) ExtensionContentWarning.NSFW else ExtensionContentWarning.SAFE,
             signatureHash = store.signingKey,
             storeName = store.name,
             // KMK <--
