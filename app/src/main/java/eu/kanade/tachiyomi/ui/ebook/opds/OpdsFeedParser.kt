@@ -13,7 +13,10 @@ internal object OpdsFeedParser {
         factory.isNamespaceAware = true
         val parser = factory.newPullParser()
         parser.setInput(input, null)
+        return parse(parser, baseUrl)
+    }
 
+    fun parse(parser: XmlPullParser, baseUrl: String): OpdsFeed {
         var feedTitle = "Catalog"
         var nextUrl: String? = null
         var searchUrl: String? = null
