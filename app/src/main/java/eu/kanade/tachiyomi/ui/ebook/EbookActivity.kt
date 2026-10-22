@@ -186,6 +186,24 @@ class EbookActivity : BaseActivity() {
         }
     }
 
+    // KMK -->
+    private val selectFont = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val imported = EpubCustomFontsManager.importFont(this, uri)
+        if (imported != null) {
+            Toast.makeText(this, "Imported font: ${imported.name}", Toast.LENGTH_SHORT).show()
+            val state = ready
+            if (state != null) {
+                applyPreferences(state) { current ->
+                    EpubFonts.select(current, imported.fontFamily)
+                }
+            }
+        } else {
+            Toast.makeText(this, "Failed to import font", Toast.LENGTH_SHORT).show()
+        }
+    }
+    // KMK <--
+
     override fun onCreate(savedInstanceState: Bundle?) {
         pickingBook = savedInstanceState?.getBoolean("epub-picking-book") ?: false
         registerSecureActivity(this)
@@ -725,6 +743,7 @@ class EbookActivity : BaseActivity() {
             reader.submitPreferences(changed)
             // KMK -->
             applyHeadingAlignmentOverride(reader)
+            applyCustomFontOverride(reader)
             // KMK <--
         }
     }
@@ -776,6 +795,7 @@ class EbookActivity : BaseActivity() {
                 override fun onPageLoaded() {
                     // KMK -->
                     applyHeadingAlignmentOverride(reader)
+                    applyCustomFontOverride(reader)
                     if (navigatingBackwards) {
                         navigatingBackwards = false
                         reader.evaluateJavascript(
@@ -998,21 +1018,52 @@ class EbookActivity : BaseActivity() {
     private fun showFontPicker() {
         val state = ready ?: return
         val reader = navigator ?: return
-        val families = EpubFonts.families
+        val bundledFamilies = EpubFonts.families
+        val customFonts = EpubCustomFontsManager.listCustomFonts(this)
         val selected = model.preferences(state.file).fontFamily
-        val labels = listOf(stringResource(KMR.strings.ebook_publisher_font)) + families.map { it.name }
-        val checked = families.indexOfFirst { it.fontFamily == selected } + 1
+
+        val labels = mutableListOf<String>()
+        labels.add(stringResource(KMR.strings.ebook_publisher_font))
+        bundledFamilies.forEach { labels.add(it.name) }
+        customFonts.forEach { labels.add("★ " + it.name) }
+        labels.add("+ " + stringResource(KMR.strings.action_import_file))
+
+        val checkedIndex = when {
+            selected == null -> 0
+            bundledFamilies.any { it.fontFamily == selected } -> 1 + bundledFamilies.indexOfFirst { it.fontFamily == selected }
+            customFonts.any { it.fontFamily == selected || it.name.equals(selected.name, ignoreCase = true) } -> {
+                1 + bundledFamilies.size + customFonts.indexOfFirst { it.fontFamily == selected || it.name.equals(selected.name, ignoreCase = true) }
+            }
+            else -> 0
+        }
+
         AlertDialog.Builder(this)
             .setTitle(stringResource(KMR.strings.ebook_font))
-            .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, index ->
+            .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, index ->
                 if (ready !== state || navigator !== reader) {
                     dialog.dismiss()
                     return@setSingleChoiceItems
                 }
-                applyPreferences(state) { current ->
-                    EpubFonts.select(current, families.getOrNull(index - 1)?.fontFamily)
+                when {
+                    index == 0 -> {
+                        applyPreferences(state) { current -> EpubFonts.select(current, null) }
+                        dialog.dismiss()
+                    }
+                    index <= bundledFamilies.size -> {
+                        val family = bundledFamilies[index - 1].fontFamily
+                        applyPreferences(state) { current -> EpubFonts.select(current, family) }
+                        dialog.dismiss()
+                    }
+                    index <= bundledFamilies.size + customFonts.size -> {
+                        val custom = customFonts[index - 1 - bundledFamilies.size]
+                        applyPreferences(state) { current -> EpubFonts.select(current, custom.fontFamily) }
+                        dialog.dismiss()
+                    }
+                    else -> {
+                        dialog.dismiss()
+                        selectFont.launch(arrayOf("font/*", "application/x-font-ttf", "application/x-font-opentype", "application/octet-stream", "*/*"))
+                    }
                 }
-                dialog.dismiss()
                 updateReaderControls(false)
             }
             .setNegativeButton(stringResource(MR.strings.action_cancel), null)
@@ -1166,6 +1217,41 @@ class EbookActivity : BaseActivity() {
                 """
                 (function() {
                     var el = document.getElementById('kmk-epub-heading-align');
+                    if (el && el.parentNode) { el.parentNode.removeChild(el); }
+                })()
+                """.trimIndent(),
+            )
+        }
+    }
+
+    private fun applyCustomFontOverride(reader: EpubNavigatorFragment) {
+        val state = ready ?: return
+        val prefs = model.preferences(state.file)
+        val customFont = EpubCustomFontsManager.findCustomFont(this, prefs.fontFamily)
+        if (customFont != null) {
+            val base64 = EpubCustomFontsManager.getFontBase64(customFont)
+            if (base64 != null) {
+                val format = if (customFont.file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+                val fontName = customFont.name.replace("'", "\\'")
+                val js = """
+                    (function() {
+                        var styleId = 'kmk-epub-custom-font';
+                        var el = document.getElementById(styleId);
+                        if (!el) {
+                            el = document.createElement('style');
+                            el.id = styleId;
+                            (document.head || document.documentElement).appendChild(el);
+                        }
+                        el.textContent = "@font-face { font-family: '" + '$fontName' + "'; src: url('data:font/$format;charset=utf-8;base64,$base64'); font-display: swap; } body, p, div, span, li, a { font-family: '" + '$fontName' + "', sans-serif !important; }";
+                    })()
+                """.trimIndent()
+                reader.evaluateJavascript(js)
+            }
+        } else {
+            reader.evaluateJavascript(
+                """
+                (function() {
+                    var el = document.getElementById('kmk-epub-custom-font');
                     if (el && el.parentNode) { el.parentNode.removeChild(el); }
                 })()
                 """.trimIndent(),

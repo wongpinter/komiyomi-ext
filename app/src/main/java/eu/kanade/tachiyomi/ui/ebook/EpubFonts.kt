@@ -70,7 +70,9 @@ internal object EpubFonts {
 
     /** A null family restores publisher styles so embedded EPUB fonts can be used. */
     fun select(preferences: EpubPreferences, family: FontFamily?): EpubPreferences {
-        require(family == null || families.any { it.fontFamily == family })
+        // KMK -->
+        // Allow bundled families, custom sideloaded families, or null (publisher styles)
+        // KMK <--
         return preferences.copy(
             fontFamily = family,
             publisherStyles = if (family == null) true else preferences.publisherStyles,
