@@ -103,7 +103,7 @@ class DownloadStore(
     }
 
     fun removeCombinedCbzRequestsForChapters(chapters: List<Chapter>) {
-        val chapterIds = chapters.mapTo(hashSetOf()) { it.id }
+        val chapterIds = chapters.mapTo(hashSetOf<Long>()) { it.id }
         if (chapterIds.isEmpty()) return
         val requests = combinedCbzRequests().filter { request -> request.chapterIds.any(chapterIds::contains) }
         preferences.edit {
