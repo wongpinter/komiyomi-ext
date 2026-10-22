@@ -59,6 +59,9 @@ import tachiyomi.core.metadata.comicinfo.COMIC_INFO_FILE
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.model.Chapter
+// KMK -->
+import tachiyomi.domain.chapter.repository.ChapterRepository
+// KMK <--
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -67,7 +70,6 @@ import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 // KMK -->
-import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.source.local.LocalSource
 // KMK <--
 import uy.kohesive.injekt.Injekt
