@@ -1,6 +1,7 @@
 // KMK -->
 @file:Suppress("ktlint:standard:import-ordering")
 // KMK <--
+
 package eu.kanade.tachiyomi.ui.browse.extension
 
 import androidx.activity.compose.BackHandler
