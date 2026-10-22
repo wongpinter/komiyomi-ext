@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.kxml2.io.KXmlParser
 import java.io.ByteArrayInputStream
 
 class OpdsFeedParserTest {
@@ -37,7 +38,11 @@ class OpdsFeedParserTest {
             </feed>
         """.trimIndent()
 
-        val feed = OpdsFeedParser.parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)), "https://example.com/opds/root")
+        val parser = KXmlParser().apply {
+            setFeature(org.xmlpull.v1.XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
+            setInput(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)), "UTF-8")
+        }
+        val feed = OpdsFeedParser.parse(parser, "https://example.com/opds/root")
 
         assertEquals("Test Catalog", feed.title)
         assertEquals("https://example.com/opds/search", feed.searchUrl)

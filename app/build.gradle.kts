@@ -360,6 +360,9 @@ dependencies {
 
     // Tests
     testImplementation(libs.bundles.test)
+    // KMK -->
+    testImplementation("net.sf.kxml:kxml2:2.3.0")
+    // KMK <--
     testRuntimeOnly(libs.junit.platform.launcher)
 
     // For detecting memory leaks; see https://square.github.io/leakcanary/
