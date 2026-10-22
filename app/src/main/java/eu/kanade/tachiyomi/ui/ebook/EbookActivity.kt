@@ -103,6 +103,7 @@ class EbookActivity : BaseActivity() {
     private var chapterPull: ChapterPull? = null
     private var chapterTurnFromHref: String? = null
     // KMK -->
+    private var navigatingBackwards = false
     private var readerTapStart: ReaderTapStart? = null
 
     private data class ReaderTapStart(val x: Float, val y: Float, val downTime: Long)
@@ -114,9 +115,18 @@ class EbookActivity : BaseActivity() {
         val x: Float,
         val y: Float,
         val startedAtEnd: Deferred<Boolean>,
+        // KMK -->
+        val startedAtStart: Deferred<Boolean>,
+        // KMK <--
     )
 
     private companion object {
+        // KMK -->
+        const val AT_CHAPTER_START =
+            "(function(){const e=document.scrollingElement||document.documentElement;" +
+                "return e.scrollHeight>0&&e.scrollTop<=2})()"
+        // KMK <--
+
         const val AT_CHAPTER_END =
             "(function(){const e=document.scrollingElement||document.documentElement;" +
                 "return e.scrollHeight>0&&e.scrollHeight-e.clientHeight-e.scrollTop<=4})()"
@@ -715,6 +725,12 @@ class EbookActivity : BaseActivity() {
                 override fun onPageLoaded() {
                     // KMK -->
                     applyHeadingAlignmentOverride(reader)
+                    if (navigatingBackwards) {
+                        navigatingBackwards = false
+                        reader.evaluateJavascript(
+                            "(function(){const e=document.scrollingElement||document.documentElement||document.body;if(e)e.scrollTop=e.scrollHeight;})()",
+                        )
+                    }
                     // KMK <--
                     if (firstPageReported) return
                     firstPageReported = true
@@ -784,6 +800,9 @@ class EbookActivity : BaseActivity() {
                 }
                 // KMK <--
                 chapterPull?.startedAtEnd?.cancel()
+                // KMK -->
+                chapterPull?.startedAtStart?.cancel()
+                // KMK <--
                 chapterPull = null
                 val state = ready
                 val reader = navigator
@@ -800,6 +819,9 @@ class EbookActivity : BaseActivity() {
                         x = event.x,
                         y = event.y,
                         startedAtEnd = lifecycleScope.async { reader.evaluateJavascript(AT_CHAPTER_END) == "true" },
+                        // KMK -->
+                        startedAtStart = lifecycleScope.async { reader.evaluateJavascript(AT_CHAPTER_START) == "true" },
+                        // KMK <--
                     )
                 }
             }
@@ -827,39 +849,80 @@ class EbookActivity : BaseActivity() {
                 // KMK <--
                 val pull = chapterPull
                 chapterPull = null
-                if (pull != null && pull.startedAtEnd.isCompleted && event.pointerCount == 1 &&
-                    pull.y - event.y >= 64.dp && abs(pull.x - event.x) < abs(pull.y - event.y) / 2
-                ) {
-                    lifecycleScope.launch {
-                        val state = ready ?: return@launch
-                        if (!pull.startedAtEnd.await() || navigator !== pull.reader ||
-                            model.preferences(state.file).scroll != true ||
-                            pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
-                            pull.reader.evaluateJavascript(AT_CHAPTER_END) != "true"
-                        ) {
-                            return@launch
+                // KMK -->
+                val pullThreshold = 96.dp
+                val dy = pull?.let { it.y - event.y } ?: 0f
+                val dx = pull?.let { abs(it.x - event.x) } ?: 0f
+
+                if (pull != null && event.pointerCount == 1 && dx < abs(dy) / 1.5f) {
+                    // Next chapter: deliberate pull UP (finger moved up, dy >= pullThreshold)
+                    if (dy >= pullThreshold && pull.startedAtEnd.isCompleted) {
+                        lifecycleScope.launch {
+                            val state = ready ?: return@launch
+                            if (!pull.startedAtEnd.await() || navigator !== pull.reader ||
+                                model.preferences(state.file).scroll != true ||
+                                pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
+                                pull.reader.evaluateJavascript(AT_CHAPTER_END) != "true"
+                            ) {
+                                return@launch
+                            }
+                            val links = state.session.publication.readingOrder
+                            val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
+                            if (index < 0) return@launch
+                            val next = links.getOrNull(index + 1) ?: return@launch
+                            chapterTurnFromHref = pull.href
+                            navigatingBackwards = false
+                            if (!pull.reader.go(next)) {
+                                chapterTurnFromHref = null
+                            } else {
+                                delay(10_000)
+                                if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                            }
                         }
-                        val links = state.session.publication.readingOrder
-                        val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
-                        if (index < 0) return@launch
-                        val next = links.getOrNull(index + 1) ?: return@launch
-                        chapterTurnFromHref = pull.href
-                        if (!pull.reader.go(next)) {
-                            chapterTurnFromHref = null
-                        } else {
-                            delay(10_000)
-                            if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                    }
+                    // Previous chapter: deliberate pull DOWN (finger moved down, -dy >= pullThreshold)
+                    else if (-dy >= pullThreshold && pull.startedAtStart.isCompleted) {
+                        lifecycleScope.launch {
+                            val state = ready ?: return@launch
+                            if (!pull.startedAtStart.await() || navigator !== pull.reader ||
+                                model.preferences(state.file).scroll != true ||
+                                pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
+                                pull.reader.evaluateJavascript(AT_CHAPTER_START) != "true"
+                            ) {
+                                return@launch
+                            }
+                            val links = state.session.publication.readingOrder
+                            val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
+                            if (index <= 0) return@launch
+                            val prev = links.getOrNull(index - 1) ?: return@launch
+                            chapterTurnFromHref = pull.href
+                            navigatingBackwards = true
+                            if (!pull.reader.go(prev)) {
+                                chapterTurnFromHref = null
+                                navigatingBackwards = false
+                            } else {
+                                delay(10_000)
+                                if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                            }
                         }
+                    } else {
+                        pull.startedAtEnd.cancel()
+                        pull.startedAtStart.cancel()
                     }
                 } else {
                     pull?.startedAtEnd?.cancel()
+                    pull?.startedAtStart?.cancel()
                 }
+                // KMK <--
             }
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
                 // KMK -->
                 readerTapStart = null
                 // KMK <--
                 chapterPull?.startedAtEnd?.cancel()
+                // KMK -->
+                chapterPull?.startedAtStart?.cancel()
+                // KMK <--
                 chapterPull = null
             }
         }
