@@ -10,7 +10,8 @@ enum class ExtensionContentWarning {
     UNSPECIFIED,
     SAFE,
     MIXED,
-    NSFW;
+    NSFW,
+    ;
 
     val isSfwOrMixed: Boolean
         get() = this == SAFE || this == MIXED
