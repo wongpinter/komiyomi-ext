@@ -922,8 +922,10 @@ class Downloader(
                 val creationResult = combinedCbzCreator.create(manga, source, chapters)
                 if (!store.markCombinedCbzRequestOutputCreated(request)) return@forEach
                 val cleanupResult = combinedCbzCreator.deleteSourceChapterArchives(creationResult.sourceChapterArchives)
-                val deletedChapterIds = (cleanupResult.deletedChapterIds +
-                    creationResult.alreadyIncludedChapterIdsWithoutFile).distinct()
+                val deletedChapterIds = (
+                    cleanupResult.deletedChapterIds +
+                        creationResult.alreadyIncludedChapterIdsWithoutFile
+                    ).distinct()
                 if (deletedChapterIds.isNotEmpty()) {
                     chapterRepository.removeChaptersWithIds(deletedChapterIds)
                 }
