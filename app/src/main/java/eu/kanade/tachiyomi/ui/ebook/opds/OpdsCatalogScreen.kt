@@ -258,18 +258,18 @@ fun OpdsCatalogScreen(
                                     // Book acquisition item
                                     OpdsBookItem(
                                         entry = entry,
-                                        onDownload = {
-                                            if (currentServer != null) {
-                                                scope.launch {
-                                                    var progress by mutableFloatStateOf(0f)
-                                                    val result = onDownloadBook(currentServer, entry) { progress = it }
-                                                    result.onSuccess {
-                                                        Toast.makeText(context, "Added to library: ${entry.title}", Toast.LENGTH_SHORT).show()
-                                                    }.onFailure {
-                                                        Toast.makeText(context, "Download failed: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
-                                                    }
-                                                }
+                                        onDownload = { onProgress ->
+                                            val result = if (currentServer != null) {
+                                                onDownloadBook(currentServer, entry, onProgress)
+                                            } else {
+                                                Result.failure(java.io.IOException("No server selected"))
                                             }
+                                            result.onSuccess {
+                                                Toast.makeText(context, "Added to library: ${entry.title}", Toast.LENGTH_SHORT).show()
+                                            }.onFailure {
+                                                Toast.makeText(context, "Download failed: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+                                            }
+                                            result
                                         },
                                     )
                                 }
@@ -295,9 +295,10 @@ fun OpdsCatalogScreen(
 @Composable
 private fun OpdsBookItem(
     entry: OpdsEntry,
-    onDownload: () -> Unit,
+    onDownload: suspend ((Float) -> Unit) -> Result<File>,
     modifier: Modifier = Modifier,
 ) {
+    val scope = rememberCoroutineScope()
     var downloading by remember { mutableStateOf(false) }
     var downloaded by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
@@ -374,10 +375,15 @@ private fun OpdsBookItem(
         IconButton(
             onClick = {
                 if (!downloading && !downloaded) {
-                    downloading = true
-                    onDownload()
-                    downloading = false
-                    downloaded = true
+                    scope.launch {
+                        downloading = true
+                        progress = 0f
+                        val result = onDownload { progress = it }
+                        downloading = false
+                        if (result.isSuccess) {
+                            downloaded = true
+                        }
+                    }
                 }
             },
             enabled = !downloading && !downloaded,

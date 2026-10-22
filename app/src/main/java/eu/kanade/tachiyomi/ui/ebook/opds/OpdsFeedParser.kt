@@ -96,8 +96,13 @@ internal object OpdsFeedParser {
                                 coverUrl = resolved
                             }
                         }
-                        rel.contains("acquisition") || type == "application/epub+zip" -> {
+                        type == "application/epub+zip" -> {
                             downloadUrl = resolved
+                        }
+                        rel.contains("acquisition") -> {
+                            if (downloadUrl == null) {
+                                downloadUrl = resolved
+                            }
                         }
                         rel.contains("subsection") || type.contains("opds-catalog") || type.contains("atom+xml") -> {
                             if (navUrl == null) {
