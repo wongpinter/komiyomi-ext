@@ -662,6 +662,9 @@ class EbookActivity : BaseActivity() {
             model.saveLocation(state.file, reader.currentLocator.value)
             model.savePreferences(state.file, changed)
             reader.submitPreferences(changed)
+            // KMK -->
+            applyHeadingAlignmentOverride(reader)
+            // KMK <--
         }
     }
 
@@ -710,6 +713,9 @@ class EbookActivity : BaseActivity() {
             configuration = EpubFonts.configuration(),
             paginationListener = object : EpubNavigatorFragment.PaginationListener {
                 override fun onPageLoaded() {
+                    // KMK -->
+                    applyHeadingAlignmentOverride(reader)
+                    // KMK <--
                     if (firstPageReported) return
                     firstPageReported = true
                     xLogI("EPUB performance: first page-loaded callback after attachMs=${(System.nanoTime() - attachStarted) / 1_000_000}")
@@ -734,13 +740,14 @@ class EbookActivity : BaseActivity() {
         val reader = factory.instantiate(classLoader, EpubNavigatorFragment::class.java.name) as EpubNavigatorFragment
         navigator = reader
         supportFragmentManager.beginTransaction().replace(container.id, reader).commitNow()
+        // KMK -->
+        var saveLocationJob: Job? = null
         locationJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 reader.currentLocator.collect { locator ->
                     if (chapterTurnFromHref != null && locator.href.toString().substringBefore('#') != chapterTurnFromHref) {
                         chapterTurnFromHref = null
                     }
-                    model.saveLocation(state.file, locator)
                     val pendingJump = pendingTocJump
                     if (pendingJump != null && locator.href.toString().substringBefore('#') == pendingJump.targetHref) {
                         pendingTocJump = null
@@ -751,9 +758,17 @@ class EbookActivity : BaseActivity() {
                         ?.toFloat()
                         ?.coerceIn(0f, 1f)
                         ?: currentProgress
+
+                    // Debounce disk writes to avoid UI-thread SharedPreferences flooding during smooth scroll
+                    saveLocationJob?.cancel()
+                    saveLocationJob = lifecycleScope.launch(Dispatchers.IO) {
+                        delay(400)
+                        model.saveLocation(state.file, locator)
+                    }
                 }
             }
         }
+        // KMK <--
         updateReaderControls(false)
     }
 
@@ -1013,6 +1028,37 @@ class EbookActivity : BaseActivity() {
         applyPreferences(state, change)
         updateReaderControls(false)
     }
+
+    // KMK -->
+    private fun applyHeadingAlignmentOverride(reader: EpubNavigatorFragment) {
+        val state = ready ?: return
+        val prefs = model.preferences(state.file)
+        if (prefs.textAlign == org.readium.r2.navigator.preferences.TextAlign.JUSTIFY) {
+            reader.evaluateJavascript(
+                """
+                (function() {
+                    var styleId = 'kmk-epub-heading-align';
+                    if (!document.getElementById(styleId)) {
+                        var style = document.createElement('style');
+                        style.id = styleId;
+                        style.textContent = 'h1, h2, h3, h4, h5, h6, [class*="title"], [class*="heading"], header { text-align: start !important; }';
+                        (document.head || document.documentElement).appendChild(style);
+                    }
+                })()
+                """.trimIndent(),
+            )
+        } else {
+            reader.evaluateJavascript(
+                """
+                (function() {
+                    var el = document.getElementById('kmk-epub-heading-align');
+                    if (el && el.parentNode) { el.parentNode.removeChild(el); }
+                })()
+                """.trimIndent(),
+            )
+        }
+    }
+    // KMK <--
 
     private fun updateReaderControls(visible: Boolean) {
         controlsVisible = visible
