@@ -562,6 +562,7 @@
     <string name="ebook_last_section">Last section</string>
     <string name="ebook_font">Reading font</string>
     <string name="ebook_publisher_font">Publisher / embedded fonts</string>
+    <string name="ebook_import_font">+ Import custom font</string>
     <string name="ebook_layout">Page layout</string>
     <string name="epub_layout_margins">Horizontal margins (factor)</string>
     <string name="epub_layout_line_height">Line spacing (× text size)</string>

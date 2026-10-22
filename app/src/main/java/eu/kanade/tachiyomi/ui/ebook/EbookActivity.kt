@@ -51,6 +51,7 @@ import exh.log.xLogE
 import exh.log.xLogI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -68,6 +69,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -813,13 +815,18 @@ class EbookActivity : BaseActivity() {
             paginationListener = object : EpubNavigatorFragment.PaginationListener {
                 override fun onPageLoaded() {
                     // KMK -->
-                    applyHeadingAlignmentOverride(reader)
-                    applyCustomFontOverride(reader)
-                    if (navigatingBackwards) {
-                        navigatingBackwards = false
-                        reader.evaluateJavascript(
-                            "(function(){const e=document.scrollingElement||document.documentElement||document.body;if(e)e.scrollTop=e.scrollHeight;})()",
-                        )
+                    val reader = navigator
+                    if (reader != null) {
+                        applyHeadingAlignmentOverride(reader)
+                        applyCustomFontOverride(reader)
+                        if (navigatingBackwards) {
+                            navigatingBackwards = false
+                            lifecycleScope.launch {
+                                reader.evaluateJavascript(
+                                    "(function(){const e=document.scrollingElement||document.documentElement||document.body;if(e)e.scrollTop=e.scrollHeight;})()",
+                                )
+                            }
+                        }
                     }
                     // KMK <--
                     if (firstPageReported) return
@@ -1045,7 +1052,7 @@ class EbookActivity : BaseActivity() {
         labels.add(stringResource(KMR.strings.ebook_publisher_font))
         bundledFamilies.forEach { labels.add(it.name) }
         customFonts.forEach { labels.add("★ " + it.name) }
-        labels.add("+ " + stringResource(KMR.strings.action_import_file))
+        labels.add(stringResource(KMR.strings.ebook_import_font))
 
         val checkedIndex = when {
             selected == null -> 0
@@ -1217,29 +1224,31 @@ class EbookActivity : BaseActivity() {
     private fun applyHeadingAlignmentOverride(reader: EpubNavigatorFragment) {
         val state = ready ?: return
         val prefs = model.preferences(state.file)
-        if (prefs.textAlign == org.readium.r2.navigator.preferences.TextAlign.JUSTIFY) {
-            reader.evaluateJavascript(
-                """
-                (function() {
-                    var styleId = 'kmk-epub-heading-align';
-                    if (!document.getElementById(styleId)) {
-                        var style = document.createElement('style');
-                        style.id = styleId;
-                        style.textContent = 'h1, h2, h3, h4, h5, h6, [class*="title"], [class*="heading"], header { text-align: start !important; }';
-                        (document.head || document.documentElement).appendChild(style);
-                    }
-                })()
-                """.trimIndent(),
-            )
-        } else {
-            reader.evaluateJavascript(
-                """
-                (function() {
-                    var el = document.getElementById('kmk-epub-heading-align');
-                    if (el && el.parentNode) { el.parentNode.removeChild(el); }
-                })()
-                """.trimIndent(),
-            )
+        lifecycleScope.launch {
+            if (prefs.textAlign == org.readium.r2.navigator.preferences.TextAlign.JUSTIFY) {
+                reader.evaluateJavascript(
+                    """
+                    (function() {
+                        var styleId = 'kmk-epub-heading-align';
+                        if (!document.getElementById(styleId)) {
+                            var style = document.createElement('style');
+                            style.id = styleId;
+                            style.textContent = 'h1, h2, h3, h4, h5, h6, [class*="title"], [class*="heading"], header { text-align: start !important; }';
+                            (document.head || document.documentElement).appendChild(style);
+                        }
+                    })()
+                    """.trimIndent(),
+                )
+            } else {
+                reader.evaluateJavascript(
+                    """
+                    (function() {
+                        var el = document.getElementById('kmk-epub-heading-align');
+                        if (el && el.parentNode) { el.parentNode.removeChild(el); }
+                    })()
+                    """.trimIndent(),
+                )
+            }
         }
     }
 
@@ -1247,34 +1256,36 @@ class EbookActivity : BaseActivity() {
         val state = ready ?: return
         val prefs = model.preferences(state.file)
         val customFont = EpubCustomFontsManager.findCustomFont(this, prefs.fontFamily)
-        if (customFont != null) {
-            val base64 = EpubCustomFontsManager.getFontBase64(customFont)
-            if (base64 != null) {
-                val format = if (customFont.file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
-                val fontName = customFont.name.replace("'", "\\'")
-                val js = """
+        lifecycleScope.launch {
+            if (customFont != null) {
+                val base64 = EpubCustomFontsManager.getFontBase64(customFont)
+                if (base64 != null) {
+                    val format = if (customFont.file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+                    val fontName = customFont.name.replace("'", "\\'")
+                    val js = """
+                        (function() {
+                            var styleId = 'kmk-epub-custom-font';
+                            var el = document.getElementById(styleId);
+                            if (!el) {
+                                el = document.createElement('style');
+                                el.id = styleId;
+                                (document.head || document.documentElement).appendChild(el);
+                            }
+                            el.textContent = "@font-face { font-family: '" + '$fontName' + "'; src: url('data:font/$format;charset=utf-8;base64,$base64'); font-display: swap; } body, p, div, span, li, a { font-family: '" + '$fontName' + "', sans-serif !important; }";
+                        })()
+                    """.trimIndent()
+                    reader.evaluateJavascript(js)
+                }
+            } else {
+                reader.evaluateJavascript(
+                    """
                     (function() {
-                        var styleId = 'kmk-epub-custom-font';
-                        var el = document.getElementById(styleId);
-                        if (!el) {
-                            el = document.createElement('style');
-                            el.id = styleId;
-                            (document.head || document.documentElement).appendChild(el);
-                        }
-                        el.textContent = "@font-face { font-family: '" + '$fontName' + "'; src: url('data:font/$format;charset=utf-8;base64,$base64'); font-display: swap; } body, p, div, span, li, a { font-family: '" + '$fontName' + "', sans-serif !important; }";
+                        var el = document.getElementById('kmk-epub-custom-font');
+                        if (el && el.parentNode) { el.parentNode.removeChild(el); }
                     })()
-                """.trimIndent()
-                reader.evaluateJavascript(js)
+                    """.trimIndent(),
+                )
             }
-        } else {
-            reader.evaluateJavascript(
-                """
-                (function() {
-                    var el = document.getElementById('kmk-epub-custom-font');
-                    if (el && el.parentNode) { el.parentNode.removeChild(el); }
-                })()
-                """.trimIndent(),
-            )
         }
     }
     // KMK <--
