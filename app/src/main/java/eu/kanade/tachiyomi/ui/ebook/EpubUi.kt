@@ -100,6 +100,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+// KMK -->
+import androidx.compose.ui.platform.LocalConfiguration
+// KMK <--
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -650,8 +653,12 @@ internal fun EpubLibraryScreen(
                 }
             },
         ) { contentPadding ->
+            // KMK -->
+            val screenWidth = LocalConfiguration.current.screenWidthDp
+            val adaptiveMinSize = if (screenWidth < 400 && coverSize > 140) 140.dp else coverSize.dp
             LazyVerticalGrid(
-                columns = if (layout == EpubLibraryLayout.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = coverSize.dp),
+                columns = if (layout == EpubLibraryLayout.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = adaptiveMinSize),
+            // KMK <--
                 modifier = Modifier.fillMaxSize().padding(contentPadding),
                 contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -757,38 +764,42 @@ internal fun EpubLibraryScreen(
                         )
                     }
                 } else {
+                    // KMK -->
+                    val showCategoryHeaders = categories.isNotEmpty() || shelfGroups.size > 1
                     shelfGroups.forEach { shelf ->
-                        item(
-                            key = shelf.key?.let { "shelf-header-category-$it" } ?: "shelf-header-uncategorized",
-                            span = { GridItemSpan(maxLineSpan) },
-                        ) {
-                            val shelfLabel = shelf.key ?: stringResource(KMR.strings.epub_library_uncategorized)
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                        if (showCategoryHeaders) {
+                            item(
+                                key = shelf.key?.let { "shelf-header-category-$it" } ?: "shelf-header-uncategorized",
+                                span = { GridItemSpan(maxLineSpan) },
                             ) {
-                                Icon(
-                                    Icons.Outlined.FolderOpen,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    shelfLabel,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    shelf.value.size.toString(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                val shelfLabel = shelf.key ?: stringResource(KMR.strings.epub_library_uncategorized)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.FolderOpen,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        shelfLabel,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        shelf.value.size.toString(),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                HorizontalDivider()
                             }
-                            HorizontalDivider()
                         }
                         items(shelf.value, key = { it.file.name }) { book ->
                             when (layout) {
@@ -798,6 +809,7 @@ internal fun EpubLibraryScreen(
                             }
                         }
                     }
+                    // KMK <--
                 }
             }
         }
@@ -1291,6 +1303,17 @@ private fun EpubCoverOnlyCard(
             ) {
                 Icon(Icons.Outlined.Info, contentDescription = stringResource(KMR.strings.epub_library_book_details))
             }
+            // KMK -->
+            val progress = book.progress()
+            if (progress > 0f) {
+                LinearProgressIndicator(
+                    progress = progress,
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.Transparent,
+                )
+            }
+            // KMK <--
         }
     }
 }
@@ -1468,9 +1491,11 @@ private fun BookCover(
     loadCover: suspend (File) -> File?,
     modifier: Modifier = Modifier,
 ) {
-    val cover by produceState(initialValue = book.coverFile?.takeIf(File::isFile), key1 = book.file) {
+    // KMK -->
+    val cover by produceState<File?>(initialValue = book.coverFile, key1 = book.file) {
         if (value == null) value = withContext(Dispatchers.IO) { loadCover(book.file) }
     }
+    // KMK <--
     Box(modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xFFE9DFCD))) {
         if (cover != null) {
             AsyncImage(
