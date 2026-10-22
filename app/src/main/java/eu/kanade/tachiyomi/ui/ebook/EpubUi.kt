@@ -666,9 +666,10 @@ internal fun EpubLibraryScreen(
             // KMK -->
             val screenWidth = LocalConfiguration.current.screenWidthDp
             val adaptiveMinSize = if (screenWidth < 400 && coverSize > 140) 140.dp else coverSize.dp
-            LazyVerticalGrid(
-                columns = if (layout == EpubLibraryLayout.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = adaptiveMinSize),
+            val gridColumns = if (layout == EpubLibraryLayout.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = adaptiveMinSize)
             // KMK <--
+            LazyVerticalGrid(
+                columns = gridColumns,
                 modifier = Modifier.fillMaxSize().padding(contentPadding),
                 contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
