@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.ui.ebook.opds
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
@@ -19,14 +18,14 @@ class OpdsFeedParserTest {
                 <title>Test Catalog</title>
                 <link rel="search" href="/opds/search" type="application/atom+xml"/>
                 <link rel="next" href="/opds/page/2" type="application/atom+xml"/>
-                
+
                 <entry>
                     <id>urn:catalog:category:sci-fi</id>
                     <title>Science Fiction</title>
                     <summary>Futuristic stories and space adventures</summary>
                     <link rel="subsection" href="/opds/category/sci-fi" type="application/atom+xml;profile=opds-catalog"/>
                 </entry>
-                
+
                 <entry>
                     <id>urn:catalog:book:123</id>
                     <title>The Time Machine</title>

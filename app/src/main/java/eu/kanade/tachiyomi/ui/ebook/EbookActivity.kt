@@ -263,7 +263,7 @@ class EbookActivity : BaseActivity() {
                         onClose = { opdsCatalogVisible = false },
                     )
                 } else if (ebookSettingsVisible) {
-                // KMK <--
+                    // KMK <--
                     EbookSettingsContent(
                         readerDefaults = model.ebookReaderDefaults(),
                         shelfSettings = model.shelfSettings(),
