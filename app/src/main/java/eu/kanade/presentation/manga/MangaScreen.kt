@@ -495,6 +495,7 @@ private fun MangaScreenSmallImpl(
                 onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite },
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
+                includeDownloadOptions = !state.source.isLocal(),
                 onClearManga = onClearManga,
                 onOpenMangaFolder = onOpenMangaFolder,
                 onClickSearchMetadata = onClickSearchMetadata,
@@ -951,6 +952,7 @@ private fun MangaScreenLargeImpl(
                 onClickEditInfo = onEditInfoClicked.takeIf { state.manga.favorite },
                 // KMK -->
                 onClickSourceSettings = onClickSourceSettingsClicked,
+                includeDownloadOptions = !state.source.isLocal(),
                 onClearManga = onClearManga,
                 onOpenMangaFolder = onOpenMangaFolder,
                 onClickSearchMetadata = onClickSearchMetadata,

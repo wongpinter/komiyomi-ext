@@ -66,6 +66,10 @@ import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
+// KMK -->
+import tachiyomi.domain.chapter.repository.ChapterRepository
+import tachiyomi.source.local.LocalSource
+// KMK <--
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -95,6 +99,7 @@ class Downloader(
     private val storageManager: StorageManager = Injekt.get(),
     private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
     private val getChapter: tachiyomi.domain.chapter.interactor.GetChapter = Injekt.get(),
+    private val chapterRepository: ChapterRepository = Injekt.get(),
     // KMK <--
 ) {
 
@@ -341,7 +346,17 @@ class Downloader(
         combineCbzChapters: List<Chapter>? = null,
         // KMK <--
     ) {
-        val source = sourceManager.get(manga.source) as? HttpSource ?: return
+        // KMK -->
+        val resolvedSource = sourceManager.get(manga.source) ?: return
+        if (resolvedSource is LocalSource) {
+            if (chapters.isNotEmpty() || combineCbzChapters.isNullOrEmpty()) return
+            val wasEmpty = queueState.value.isEmpty()
+            store.addCombinedCbzRequest(manga, combineCbzChapters)
+            if (autoStart && wasEmpty) DownloadJob.start(context)
+            return
+        }
+        val source = resolvedSource as? HttpSource ?: return
+        // KMK <--
 
         // KMK -->
         if (source.id == MERGED_SOURCE_ID) return
@@ -876,9 +891,14 @@ class Downloader(
         store.combinedCbzRequests().forEach { request ->
             try {
                 val manga = getManga.await(request.mangaId) ?: return@forEach
-                val source = sourceManager.get(manga.source) as? HttpSource ?: return@forEach
+                val source = sourceManager.get(manga.source) ?: return@forEach
+                if (source !is HttpSource && source !is LocalSource) return@forEach
                 val chapters = request.chapterIds.mapNotNull { getChapter.await(it) }
-                if (chapters.size != request.chapterIds.size) return@forEach
+                if (!request.outputCreated && chapters.size != request.chapterIds.size) return@forEach
+                if (request.outputCreated && (source is HttpSource || chapters.isEmpty())) {
+                    store.removeCombinedCbzRequest(request)
+                    return@forEach
+                }
 
                 val requestedChapterIds = request.chapterIds.toSet()
                 if (
@@ -890,19 +910,41 @@ class Downloader(
                     return@forEach
                 }
 
-                val allChaptersDownloaded = chapters.all { chapter ->
-                    provider.findChapterDir(
-                        chapter.name,
-                        chapter.scanlator,
-                        chapter.url,
-                        manga.ogTitle,
-                        source,
-                    ) != null
+                if (source is HttpSource) {
+                    val allChaptersDownloaded = chapters.all { chapter ->
+                        provider.findChapterDir(
+                            chapter.name,
+                            chapter.scanlator,
+                            chapter.url,
+                            manga.ogTitle,
+                            source,
+                        ) != null
+                    }
+                    if (!allChaptersDownloaded) return@forEach
                 }
-                if (!allChaptersDownloaded) return@forEach
 
-                combinedCbzCreator.create(manga, source, chapters)
-                store.removeCombinedCbzRequest(request.mangaId)
+                val creationResult = combinedCbzCreator.create(manga, source, chapters)
+                if (!store.markCombinedCbzRequestOutputCreated(request)) return@forEach
+                val cleanupResult = combinedCbzCreator.deleteSourceChapterArchives(creationResult.sourceChapterArchives)
+                val deletedChapterIds = (cleanupResult.deletedChapterIds +
+                    creationResult.alreadyIncludedChapterIdsWithoutFile).distinct()
+                if (deletedChapterIds.isNotEmpty()) {
+                    chapterRepository.removeChaptersWithIds(deletedChapterIds)
+                }
+                if (cleanupResult.failedChapterIds.isNotEmpty()) {
+                    notifier.onWarning(
+                        context.stringResource(KMR.strings.combined_cbz_originals_not_removed),
+                        mangaId = request.mangaId,
+                    )
+                    return@forEach
+                }
+                store.removeCombinedCbzRequest(request)
+            } catch (error: CombinedCbzUnsupportedChapterException) {
+                store.removeCombinedCbzRequest(request)
+                notifier.onError(
+                    context.stringResource(KMR.strings.combined_cbz_unsupported_epub),
+                    mangaId = request.mangaId,
+                )
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 logcat(LogPriority.ERROR, error) {

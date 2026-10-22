@@ -95,11 +95,33 @@ class DownloadStore(
         val serialized = value as? String ?: return@mapNotNull null
         val request = runCatching { json.decodeFromString<CombinedCbzRequestObject>(serialized) }
             .getOrNull() ?: return@mapNotNull null
-        CombinedCbzRequest(request.mangaId, request.chapterIds.distinct())
+        CombinedCbzRequest(request.mangaId, request.chapterIds.distinct(), request.outputCreated)
     }
 
     fun removeCombinedCbzRequest(mangaId: Long) {
         preferences.edit { remove(getCombinedCbzKey(mangaId)) }
+    }
+
+    internal fun markCombinedCbzRequestOutputCreated(request: CombinedCbzRequest): Boolean {
+        val key = getCombinedCbzKey(request.mangaId)
+        val current = preferences.getString(key, null)
+            ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
+            ?: return false
+        if (current.chapterIds.distinct() != request.chapterIds) return false
+        preferences.edit(commit = true) {
+            putString(key, json.encodeToString(current.copy(outputCreated = true)))
+        }
+        return true
+    }
+
+    internal fun removeCombinedCbzRequest(request: CombinedCbzRequest) {
+        val key = getCombinedCbzKey(request.mangaId)
+        val current = preferences.getString(key, null)
+            ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
+            ?: return
+        if (current.chapterIds.distinct() == request.chapterIds) {
+            preferences.edit { remove(key) }
+        }
     }
 
     fun removeCombinedCbzRequestsForChapters(chapters: List<tachiyomi.domain.chapter.model.Chapter>) {
@@ -189,10 +211,18 @@ class DownloadStore(
 }
 
 // KMK -->
-internal data class CombinedCbzRequest(val mangaId: Long, val chapterIds: List<Long>)
+internal data class CombinedCbzRequest(
+    val mangaId: Long,
+    val chapterIds: List<Long>,
+    val outputCreated: Boolean = false,
+)
 
 @Serializable
-private data class CombinedCbzRequestObject(val mangaId: Long, val chapterIds: List<Long>)
+private data class CombinedCbzRequestObject(
+    val mangaId: Long,
+    val chapterIds: List<Long>,
+    val outputCreated: Boolean = false,
+)
 // KMK <--
 
 /**
