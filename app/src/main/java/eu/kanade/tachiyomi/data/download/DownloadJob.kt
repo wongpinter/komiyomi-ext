@@ -61,10 +61,12 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
     }
 
     override suspend fun doWork(): Result {
-        var networkCheck = checkNetworkState(
+        // KMK -->
+        var networkCheck = !queueNeedsNetwork() || checkNetworkState(
             applicationContext.activeNetworkState(),
             downloadPreferences.downloadOnlyOverWifi().get(),
         )
+        // KMK <--
         var active = networkCheck && downloadManager.downloaderStart()
 
         if (!active) {
@@ -77,7 +79,15 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
             combineTransform(
                 applicationContext.networkStateFlow(),
                 downloadPreferences.downloadOnlyOverWifi().changes(),
-                transform = { a, b -> emit(checkNetworkState(a, b)) },
+                // KMK -->
+                downloadManager.queueState,
+                transform = { a, b, queue ->
+                    emit(
+                        queue.none { it.status.value <= eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADING.value } ||
+                            checkNetworkState(a, b),
+                    )
+                },
+                // KMK <--
             )
                 .onEach { networkCheck = it }
                 .launchIn(this)
@@ -105,6 +115,12 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
             false
         }
     }
+
+    // KMK -->
+    private fun queueNeedsNetwork(): Boolean = downloadManager.queueState.value.any {
+        it.status.value <= eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADING.value
+    }
+    // KMK <--
 
     companion object {
         private const val TAG = "Downloader"

@@ -1,7 +1,14 @@
+// KMK -->
+@file:Suppress("ktlint:standard:import-ordering")
+// KMK <--
+
 package eu.kanade.tachiyomi.ui.browse.extension
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
+// KMK -->
+import androidx.compose.material.icons.outlined.VerifiedUser
+// KMK <--
 import androidx.compose.material.icons.outlined._18UpRating
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LocalContentColor
@@ -51,6 +58,12 @@ fun extensionsTab(
                 icon = Icons.Outlined._18UpRating,
                 iconTint = if (state.nsfwOnly) MaterialTheme.colorScheme.error else LocalContentColor.current,
                 onClick = { extensionsScreenModel.toggleNsfwOnly() },
+            ),
+            AppBar.Action(
+                title = stringResource(KMR.strings.action_toggle_sfw_mixed_only),
+                icon = Icons.Outlined.VerifiedUser,
+                iconTint = if (state.sfwOnly) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                onClick = { extensionsScreenModel.toggleSfwOnly() },
             ),
             AppBar.OverflowAction(
                 title = stringResource(MR.strings.action_webview_refresh),

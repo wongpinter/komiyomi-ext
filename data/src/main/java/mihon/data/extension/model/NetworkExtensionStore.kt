@@ -106,6 +106,12 @@ fun ExtensionList.toAvailableExtensions(store: ExtensionStore): List<TachiyomiEx
             lang = if (lang.size == 1) lang.first() else "all",
             isNsfw = extension.contentWarning >= ContentWarning.MIXED,
             // KMK -->
+            contentWarning = when (extension.contentWarning) {
+                ContentWarning.UNSPECIFIED -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.UNSPECIFIED
+                ContentWarning.SAFE -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.SAFE
+                ContentWarning.MIXED -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.MIXED
+                ContentWarning.NSFW -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.NSFW
+            },
             signatureHash = store.signingKey,
             storeName = store.name,
             // KMK <--

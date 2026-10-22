@@ -93,6 +93,8 @@ class Downloader(
     // SY <--
     // KMK -->
     private val storageManager: StorageManager = Injekt.get(),
+    private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
+    private val getChapter: tachiyomi.domain.chapter.interactor.GetChapter = Injekt.get(),
     // KMK <--
 ) {
 
@@ -100,6 +102,11 @@ class Downloader(
      * Store for persisting downloads across restarts.
      */
     private val store = DownloadStore(context)
+
+    // KMK -->
+    private val storeRestored = kotlinx.coroutines.CompletableDeferred<Unit>()
+    private val combinedCbzCreator = CombinedCbzCreator(context, provider, xml)
+    // KMK <--
 
     /**
      * Queue where active downloads are kept.
@@ -129,8 +136,14 @@ class Downloader(
 
     init {
         launchNow {
-            val chapters = async { store.restore() }
-            addAllToQueue(chapters.await())
+            // KMK -->
+            try {
+                val chapters = async { store.restore() }
+                addAllToQueue(chapters.await())
+            } finally {
+                storeRestored.complete(Unit)
+            }
+            // KMK <--
         }
     }
 
@@ -141,9 +154,12 @@ class Downloader(
      * @return true if the downloader is started, false otherwise.
      */
     fun start(): Boolean {
-        if (isRunning || queueState.value.isEmpty()) {
+        // KMK -->
+        val hasCombinedCbzRequests = store.hasCombinedCbzRequests()
+        if (isRunning || (queueState.value.isEmpty() && !hasCombinedCbzRequests)) {
             return false
         }
+        // KMK <--
 
         // KMK -->
         notifier.dismissPaused()
@@ -156,7 +172,9 @@ class Downloader(
 
         launchDownloaderJob()
 
-        return pending.isNotEmpty()
+        // KMK -->
+        return pending.isNotEmpty() || hasCombinedCbzRequests
+        // KMK <--
     }
 
     /**
@@ -212,6 +230,16 @@ class Downloader(
         if (isRunning) return
 
         downloaderJob = scope.launch {
+            // KMK -->
+            storeRestored.await()
+            if (queueState.value.isEmpty()) {
+                processPendingCombinedCbzRequests()
+                if (queueState.value.isEmpty()) {
+                    stop()
+                    return@launch
+                }
+            }
+            // KMK <--
             // KMK -->
             val activeDownloadsFlow = combine(
                 queueState,
@@ -277,6 +305,9 @@ class Downloader(
                 removeFromQueue(download)
             }
             if (areAllDownloadsFinished()) {
+                // KMK -->
+                processPendingCombinedCbzRequests()
+                // KMK <--
                 stop()
             }
         } catch (e: Throwable) {
@@ -302,13 +333,25 @@ class Downloader(
      * @param chapters the list of chapters to download.
      * @param autoStart whether to start the downloader after enqueing the chapters.
      */
-    fun queueChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean) {
-        if (chapters.isEmpty()) return
-
+    fun queueChapters(
+        manga: Manga,
+        chapters: List<Chapter>,
+        autoStart: Boolean,
+        // KMK -->
+        combineCbzChapters: List<Chapter>? = null,
+        // KMK <--
+    ) {
         val source = sourceManager.get(manga.source) as? HttpSource ?: return
 
         // KMK -->
         if (source.id == MERGED_SOURCE_ID) return
+        // KMK <--
+
+        // KMK -->
+        if (!combineCbzChapters.isNullOrEmpty()) {
+            store.addCombinedCbzRequest(manga, combineCbzChapters)
+        }
+        if (chapters.isEmpty() && combineCbzChapters.isNullOrEmpty()) return
         // KMK <--
 
         val wasEmpty = queueState.value.isEmpty()
@@ -349,9 +392,14 @@ class Downloader(
                         NotificationHandler.openUrl(context, LibraryUpdateNotifier.HELP_WARNING_URL),
                     )
                 }
-                DownloadJob.start(context)
             }
         }
+
+        // KMK -->
+        if (autoStart && wasEmpty && (chaptersToQueue.isNotEmpty() || !combineCbzChapters.isNullOrEmpty())) {
+            DownloadJob.start(context)
+        }
+        // KMK <--
     }
 
     /**
@@ -823,6 +871,49 @@ class Downloader(
         }
     }
 
+    // KMK -->
+    private suspend fun processPendingCombinedCbzRequests() {
+        store.combinedCbzRequests().forEach { request ->
+            try {
+                val manga = getManga.await(request.mangaId) ?: return@forEach
+                val source = sourceManager.get(manga.source) as? HttpSource ?: return@forEach
+                val chapters = request.chapterIds.mapNotNull { getChapter.await(it) }
+                if (chapters.size != request.chapterIds.size) return@forEach
+
+                val requestedChapterIds = request.chapterIds.toSet()
+                if (
+                    queueState.value.any {
+                        it.chapter.id in requestedChapterIds &&
+                            it.status.value <= Download.State.DOWNLOADING.value
+                    }
+                ) {
+                    return@forEach
+                }
+
+                val allChaptersDownloaded = chapters.all { chapter ->
+                    provider.findChapterDir(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.ogTitle,
+                        source,
+                    ) != null
+                }
+                if (!allChaptersDownloaded) return@forEach
+
+                combinedCbzCreator.create(manga, source, chapters)
+                store.removeCombinedCbzRequest(request.mangaId)
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                logcat(LogPriority.ERROR, error) {
+                    "Failed to create combined CBZ for mangaId=${request.mangaId}"
+                }
+                notifier.onError(error.message, mangaId = request.mangaId)
+            }
+        }
+    }
+    // KMK <--
+
     /**
      * Returns true if all the queued downloads are in DOWNLOADED or ERROR state.
      */
@@ -866,10 +957,16 @@ class Downloader(
     fun removeFromQueue(chapters: List<Chapter>) {
         val chapterIds = chapters.map { it.id }
         removeFromQueueIf { it.chapter.id in chapterIds }
+        // KMK -->
+        store.removeCombinedCbzRequestsForChapters(chapters)
+        // KMK <--
     }
 
     fun removeFromQueue(manga: Manga) {
         removeFromQueueIf { it.manga.id == manga.id }
+        // KMK -->
+        store.removeCombinedCbzRequest(manga.id)
+        // KMK <--
     }
 
     private fun internalClearQueue() {

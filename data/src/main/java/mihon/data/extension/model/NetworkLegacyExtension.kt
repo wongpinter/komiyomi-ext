@@ -37,6 +37,11 @@ data class NetworkLegacyExtension(
             lang = lang,
             isNsfw = nsfw == 1,
             // KMK -->
+            contentWarning = if (nsfw == 1) {
+                eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.NSFW
+            } else {
+                eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.SAFE
+            },
             signatureHash = store.signingKey,
             storeName = store.name,
             // KMK <--

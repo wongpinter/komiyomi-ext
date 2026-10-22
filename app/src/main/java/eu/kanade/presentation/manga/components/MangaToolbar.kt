@@ -117,6 +117,9 @@ fun MangaToolbar(
                     expanded = downloadExpanded,
                     onDismissRequest = onDismissRequest,
                     onDownloadClicked = onClickDownload,
+                    // KMK -->
+                    includeCreateCbz = true,
+                    // KMK <--
                 )
             }
 

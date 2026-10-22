@@ -282,6 +282,17 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
+        // KMK -->
+        val manifestContentWarning = appInfo.metaData.getInt(METADATA_CONTENT_WARNING)
+        val contentWarning = when {
+            appInfo.metaData.getInt(METADATA_NSFW) == 1 -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.NSFW
+            appInfo.metaData.containsKey(METADATA_CONTENT_WARNING) ->
+                eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.fromManifestValue(manifestContentWarning)
+            else -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.SAFE
+        }
+        val isNsfw = manifestContentWarning > 0 || appInfo.metaData.getInt(METADATA_NSFW) == 1
+        // KMK <--
+
         val signatures = getSignatures(pkgInfo)
         if (signatures.isNullOrEmpty()) {
             logcat(LogPriority.WARN) { "Package $pkgName isn't signed" }
@@ -295,6 +306,8 @@ internal object ExtensionLoader {
                 libVersion,
                 signatures.last(),
                 // KMK -->
+                isNsfw = isNsfw,
+                contentWarning = contentWarning,
                 storeName = stores.firstOrNull { store ->
                     signatures.all { it == store.signingKey }
                 }?.let { store ->
@@ -306,8 +319,6 @@ internal object ExtensionLoader {
             return LoadResult.Untrusted(extension)
         }
 
-        val isNsfw = appInfo.metaData.getInt(METADATA_CONTENT_WARNING) > 0 ||
-            appInfo.metaData.getInt(METADATA_NSFW) == 1
         if (!loadNsfwSource && isNsfw) {
             logcat(LogPriority.WARN) { "NSFW extension $pkgName not allowed" }
             return LoadResult.Error
@@ -363,6 +374,7 @@ internal object ExtensionLoader {
             icon = appInfo.loadIcon(pkgManager),
             isShared = extensionInfo.isShared,
             // KMK -->
+            contentWarning = contentWarning,
             signatureHash = signatures.last(),
             storeName = stores.firstOrNull { store ->
                 signatures.all { it == store.signingKey }

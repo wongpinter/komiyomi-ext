@@ -79,6 +79,41 @@ class DownloadStore(
         }
     }
 
+    // KMK -->
+    fun addCombinedCbzRequest(manga: Manga, chapters: List<tachiyomi.domain.chapter.model.Chapter>) {
+        val chapterIds = chapters.map { it.id }.distinct()
+        if (chapterIds.isEmpty()) return
+
+        val request = CombinedCbzRequestObject(manga.id, chapterIds)
+        preferences.edit {
+            putString(getCombinedCbzKey(manga.id), json.encodeToString(request))
+        }
+    }
+
+    internal fun combinedCbzRequests(): List<CombinedCbzRequest> = preferences.all.mapNotNull { (key, value) ->
+        if (!key.startsWith(COMBINED_CBZ_KEY_PREFIX)) return@mapNotNull null
+        val serialized = value as? String ?: return@mapNotNull null
+        val request = runCatching { json.decodeFromString<CombinedCbzRequestObject>(serialized) }
+            .getOrNull() ?: return@mapNotNull null
+        CombinedCbzRequest(request.mangaId, request.chapterIds.distinct())
+    }
+
+    fun removeCombinedCbzRequest(mangaId: Long) {
+        preferences.edit { remove(getCombinedCbzKey(mangaId)) }
+    }
+
+    fun removeCombinedCbzRequestsForChapters(chapters: List<tachiyomi.domain.chapter.model.Chapter>) {
+        val chapterIds = chapters.mapTo(hashSetOf<Long>()) { it.id }
+        if (chapterIds.isEmpty()) return
+        val requests = combinedCbzRequests().filter { request -> request.chapterIds.any(chapterIds::contains) }
+        preferences.edit {
+            requests.forEach { remove(getCombinedCbzKey(it.mangaId)) }
+        }
+    }
+
+    private fun getCombinedCbzKey(mangaId: Long) = "$COMBINED_CBZ_KEY_PREFIX$mangaId"
+    // KMK <--
+
     /**
      * Returns the preference's key for the given download.
      *
@@ -94,6 +129,9 @@ class DownloadStore(
     suspend fun restore(): List<Download> {
         sourceManager.isInitialized.first { it }
         val objs = preferences.all
+            // KMK -->
+            .filterKeys { !it.startsWith(COMBINED_CBZ_KEY_PREFIX) }
+            // KMK <--
             .mapNotNull { it.value as? String }
             .mapNotNull { deserialize(it) }
             .sortedBy { it.order }
@@ -140,7 +178,22 @@ class DownloadStore(
             null
         }
     }
+
+    // KMK -->
+    fun hasCombinedCbzRequests() = combinedCbzRequests().isNotEmpty()
+
+    private companion object {
+        const val COMBINED_CBZ_KEY_PREFIX = "combined_cbz_"
+    }
+    // KMK <--
 }
+
+// KMK -->
+internal data class CombinedCbzRequest(val mangaId: Long, val chapterIds: List<Long>)
+
+@Serializable
+private data class CombinedCbzRequestObject(val mangaId: Long, val chapterIds: List<Long>)
+// KMK <--
 
 /**
  * Class used for download serialization

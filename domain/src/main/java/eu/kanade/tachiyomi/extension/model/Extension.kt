@@ -5,6 +5,28 @@ import eu.kanade.tachiyomi.source.Source
 import mihon.domain.extension.model.ExtensionStore
 import tachiyomi.domain.source.model.StubSource
 
+// KMK -->
+enum class ExtensionContentWarning {
+    UNSPECIFIED,
+    SAFE,
+    MIXED,
+    NSFW,
+    ;
+
+    val isSfwOrMixed: Boolean
+        get() = this == SAFE || this == MIXED
+
+    companion object {
+        fun fromManifestValue(value: Int): ExtensionContentWarning = when (value) {
+            0 -> SAFE
+            1 -> MIXED
+            2 -> NSFW
+            else -> UNSPECIFIED
+        }
+    }
+}
+// KMK <--
+
 sealed class Extension {
 
     abstract val name: String
@@ -16,6 +38,7 @@ sealed class Extension {
     abstract val isNsfw: Boolean
 
     // KMK -->
+    abstract val contentWarning: ExtensionContentWarning
     abstract val signatureHash: String
     abstract val storeName: String?
     // KMK <--
@@ -43,6 +66,9 @@ sealed class Extension {
         // SY -->
         val isRedundant: Boolean = false,
         // SY <--
+        // KMK -->
+        override val contentWarning: ExtensionContentWarning = ExtensionContentWarning.UNSPECIFIED,
+        // KMK <--
     ) : Extension()
 
     data class Available(
@@ -61,6 +87,9 @@ sealed class Extension {
         val apkUrl: String,
         val iconUrl: String,
         val store: ExtensionStore,
+        // KMK -->
+        override val contentWarning: ExtensionContentWarning = ExtensionContentWarning.UNSPECIFIED,
+        // KMK <--
     ) : Extension() {
 
         data class Source(
@@ -92,5 +121,8 @@ sealed class Extension {
         // KMK <--
         override val lang: String? = null,
         override val isNsfw: Boolean = false,
+        // KMK -->
+        override val contentWarning: ExtensionContentWarning = ExtensionContentWarning.UNSPECIFIED,
+        // KMK <--
     ) : Extension()
 }
