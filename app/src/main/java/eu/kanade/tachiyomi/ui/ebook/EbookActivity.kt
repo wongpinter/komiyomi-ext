@@ -98,6 +98,9 @@ class EbookActivity : BaseActivity() {
     private var currentPdfPage by mutableIntStateOf(0)
     private var pdfHudVisible by mutableStateOf(false)
     private var ebookSettingsVisible by mutableStateOf(false)
+    // KMK -->
+    private var opdsCatalogVisible by mutableStateOf(false)
+    // KMK <--
     private var bookDetailsDialog: BottomSheetDialog? = null
     private var bookDetailsLoadJob: Job? = null
     private var bookDetailsUi by mutableStateOf<BookDetailsUi?>(null)
@@ -250,7 +253,17 @@ class EbookActivity : BaseActivity() {
                 val folderSources by model.folderSources.collectAsState()
                 val loading by model.libraryLoading.collectAsState()
                 val libraryError by model.libraryError.collectAsState()
-                if (ebookSettingsVisible) {
+                // KMK -->
+                if (opdsCatalogVisible) {
+                    eu.kanade.tachiyomi.ui.ebook.opds.OpdsCatalogScreen(
+                        servers = model.opdsServers(),
+                        onAddServer = model::addOpdsServer,
+                        onFetchFeed = model::fetchOpdsFeed,
+                        onDownloadBook = model::downloadOpdsBook,
+                        onClose = { opdsCatalogVisible = false },
+                    )
+                } else if (ebookSettingsVisible) {
+                // KMK <--
                     EbookSettingsContent(
                         readerDefaults = model.ebookReaderDefaults(),
                         shelfSettings = model.shelfSettings(),
@@ -287,6 +300,9 @@ class EbookActivity : BaseActivity() {
                         onCancelImport = model::cancelImport,
                         onDetails = ::showShelfBookDetails,
                         loadCover = model::coverFor,
+                        // KMK -->
+                        onOpds = { opdsCatalogVisible = true },
+                        // KMK <--
                     )
                 }
             }
@@ -401,6 +417,9 @@ class EbookActivity : BaseActivity() {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     when {
+                        // KMK -->
+                        opdsCatalogVisible -> opdsCatalogVisible = false
+                        // KMK <--
                         ebookSettingsVisible -> ebookSettingsVisible = false
                         // KMK -->
                         ready != null && !controlsVisible -> updateReaderControls(true)

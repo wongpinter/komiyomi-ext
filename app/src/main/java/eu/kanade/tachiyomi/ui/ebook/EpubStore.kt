@@ -92,6 +92,59 @@ internal class EpubStore(context: Context) {
         shelfPreferences.edit { putString("folderSources", entries.toString()) }
     }
 
+    // KMK -->
+    val defaultOpdsServers = listOf(
+        eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer(
+            id = "standard-ebooks",
+            name = "Standard Ebooks",
+            url = "https://standardebooks.org/opds/all",
+        ),
+        eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer(
+            id = "project-gutenberg",
+            name = "Project Gutenberg",
+            url = "https://m.gutenberg.org/ebooks.opds/",
+        ),
+    )
+
+    fun opdsServers(): List<eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer> = runCatching {
+        val raw = shelfPreferences.getString("opds_servers", null) ?: return defaultOpdsServers
+        val array = org.json.JSONArray(raw)
+        List(array.length()) { i ->
+            val obj = array.getJSONObject(i)
+            eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer(
+                id = obj.getString("id"),
+                name = obj.getString("name"),
+                url = obj.getString("url"),
+                username = obj.optString("username").takeIf(String::isNotBlank),
+                password = obj.optString("password").takeIf(String::isNotBlank),
+            )
+        }
+    }.getOrDefault(defaultOpdsServers)
+
+    fun saveOpdsServers(servers: List<eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer>) {
+        val array = org.json.JSONArray()
+        servers.forEach { server ->
+            val obj = org.json.JSONObject()
+            obj.put("id", server.id)
+            obj.put("name", server.name)
+            obj.put("url", server.url)
+            server.username?.let { obj.put("username", it) }
+            server.password?.let { obj.put("password", it) }
+            array.put(obj)
+        }
+        shelfPreferences.edit { putString("opds_servers", array.toString()) }
+    }
+
+    fun addOpdsServer(server: eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer) {
+        val current = opdsServers().filterNot { it.id == server.id }
+        saveOpdsServers(current + server)
+    }
+
+    fun removeOpdsServer(id: String) {
+        saveOpdsServers(opdsServers().filterNot { it.id == id })
+    }
+    // KMK <--
+
     fun shelfSettings(): ShelfSettings = ShelfSettings(
         query = shelfPreferences.getString("query", "").orEmpty(),
         filter = shelfPreferences.getString("filter", "ALL") ?: "ALL",

@@ -323,6 +323,9 @@ internal fun EpubLibraryScreen(
     onCancelImport: () -> Unit,
     onDetails: (EpubStore.ImportedEpub) -> Unit,
     loadCover: suspend (File) -> File?,
+    // KMK -->
+    onOpds: () -> Unit = {},
+    // KMK <--
 ) {
     var query by rememberSaveable { mutableStateOf(shelfSettings.query) }
     var selectedFilter by rememberSaveable {
@@ -573,6 +576,15 @@ internal fun EpubLibraryScreen(
                                                 onAddFolder()
                                             },
                                         )
+                                        // KMK -->
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text("OPDS Catalogs") },
+                                            onClick = {
+                                                importMenuExpanded = false
+                                                onOpds()
+                                            },
+                                        )
+                                        // KMK <--
                                     }
                                 }
                             }

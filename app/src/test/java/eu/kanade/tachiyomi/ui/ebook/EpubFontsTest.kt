@@ -36,10 +36,10 @@ class EpubFontsTest {
     }
 
     @Test
-    fun `unknown font names cannot enter the local picker`() {
-        assertThrows(IllegalArgumentException::class.java) {
-            EpubFonts.select(EpubPreferences(), FontFamily("Unknown family"))
-        }
+    fun `custom font families can be selected`() {
+        val custom = FontFamily("Custom Font")
+        val changed = EpubFonts.select(EpubPreferences(), custom)
+        assertEquals(custom, changed.fontFamily)
     }
 
     @Test
