@@ -9,9 +9,6 @@ import androidx.core.content.pm.PackageInfoCompat
 import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.model.Extension
-// KMK -->
-import eu.kanade.tachiyomi.extension.model.ExtensionContentWarning
-// KMK <--
 import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
@@ -288,10 +285,10 @@ internal object ExtensionLoader {
         // KMK -->
         val manifestContentWarning = appInfo.metaData.getInt(METADATA_CONTENT_WARNING)
         val contentWarning = when {
-            appInfo.metaData.getInt(METADATA_NSFW) == 1 -> ExtensionContentWarning.NSFW
+            appInfo.metaData.getInt(METADATA_NSFW) == 1 -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.NSFW
             appInfo.metaData.containsKey(METADATA_CONTENT_WARNING) ->
-                ExtensionContentWarning.fromManifestValue(manifestContentWarning)
-            else -> ExtensionContentWarning.SAFE
+                eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.fromManifestValue(manifestContentWarning)
+            else -> eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.SAFE
         }
         val isNsfw = manifestContentWarning > 0 || appInfo.metaData.getInt(METADATA_NSFW) == 1
         // KMK <--

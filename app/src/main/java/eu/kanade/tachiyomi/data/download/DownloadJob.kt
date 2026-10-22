@@ -15,9 +15,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
-// KMK -->
-import eu.kanade.tachiyomi.data.download.model.Download
-// KMK <--
 import eu.kanade.tachiyomi.util.system.NetworkState
 import eu.kanade.tachiyomi.util.system.activeNetworkState
 import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
@@ -86,7 +83,7 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
                 downloadManager.queueState,
                 transform = { a, b, queue ->
                     emit(
-                        queue.none { it.status.value <= Download.State.DOWNLOADING.value } ||
+                        queue.none { it.status.value <= eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADING.value } ||
                             checkNetworkState(a, b),
                     )
                 },
@@ -121,7 +118,7 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
 
     // KMK -->
     private fun queueNeedsNetwork(): Boolean = downloadManager.queueState.value.any {
-        it.status.value <= Download.State.DOWNLOADING.value
+        it.status.value <= eu.kanade.tachiyomi.data.download.model.Download.State.DOWNLOADING.value
     }
     // KMK <--
 

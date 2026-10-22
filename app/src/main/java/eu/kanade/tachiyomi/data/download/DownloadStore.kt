@@ -7,9 +7,6 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
-// KMK -->
-import kotlinx.serialization.decodeFromString
-// KMK <--
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.domain.chapter.interactor.GetChapter

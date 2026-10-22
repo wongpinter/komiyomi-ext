@@ -11,9 +11,6 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
-// KMK -->
-import eu.kanade.tachiyomi.extension.model.ExtensionContentWarning
-// KMK <--
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -262,7 +259,7 @@ class ExtensionsScreenModel(
 
     // KMK -->
     private fun matchesContentFilter(extension: Extension, nsfwOnly: Boolean, sfwOnly: Boolean): Boolean = when {
-        nsfwOnly -> extension.contentWarning == ExtensionContentWarning.NSFW
+        nsfwOnly -> extension.contentWarning == eu.kanade.tachiyomi.extension.model.ExtensionContentWarning.NSFW
         sfwOnly -> extension.contentWarning.isSfwOrMixed
         else -> true
     }

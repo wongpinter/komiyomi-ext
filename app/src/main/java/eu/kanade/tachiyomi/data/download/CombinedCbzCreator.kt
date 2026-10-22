@@ -4,19 +4,15 @@ package eu.kanade.tachiyomi.data.download
 import android.content.Context
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.source.online.HttpSource
-// KMK -->
 import kotlinx.serialization.encodeToString
-// KMK <--
 import mihon.core.archive.CbzCrypto
 import mihon.core.archive.ZipWriter
 import mihon.core.archive.archiveReader
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.util.system.ImageUtil
-// KMK -->
 import tachiyomi.core.metadata.comicinfo.COMIC_INFO_FILE
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.core.metadata.comicinfo.ComicInfoPublishingStatus
-// KMK <--
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 import java.io.IOException

@@ -2,10 +2,8 @@ package eu.kanade.tachiyomi.ui.browse.extension
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined._18UpRating
-// KMK -->
 import androidx.compose.material.icons.outlined.VerifiedUser
-// KMK <--
+import androidx.compose.material.icons.outlined._18UpRating
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -57,7 +55,7 @@ fun extensionsTab(
             ),
             AppBar.Action(
                 title = stringResource(KMR.strings.action_toggle_sfw_mixed_only),
-                icon = Icons.Outlined.VerifiedUser,
+                icon = androidx.compose.material.icons.outlined.VerifiedUser,
                 iconTint = if (state.sfwOnly) MaterialTheme.colorScheme.primary else LocalContentColor.current,
                 onClick = { extensionsScreenModel.toggleSfwOnly() },
             ),

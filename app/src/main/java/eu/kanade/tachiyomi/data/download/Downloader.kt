@@ -20,9 +20,6 @@ import exh.source.isEhBasedSource
 import exh.util.DataSaver
 import exh.util.DataSaver.Companion.getImage
 import kotlinx.coroutines.CancellationException
-// KMK -->
-import kotlinx.coroutines.CompletableDeferred
-// KMK <--
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -61,10 +58,6 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.core.metadata.comicinfo.COMIC_INFO_FILE
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.domain.category.interactor.GetCategories
-// KMK -->
-import tachiyomi.domain.chapter.interactor.GetChapter
-import tachiyomi.domain.manga.interactor.GetManga
-// KMK <--
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
@@ -100,8 +93,8 @@ class Downloader(
     // SY <--
     // KMK -->
     private val storageManager: StorageManager = Injekt.get(),
-    private val getManga: GetManga = Injekt.get(),
-    private val getChapter: GetChapter = Injekt.get(),
+    private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
+    private val getChapter: tachiyomi.domain.chapter.interactor.GetChapter = Injekt.get(),
     // KMK <--
 ) {
 
@@ -111,7 +104,7 @@ class Downloader(
     private val store = DownloadStore(context)
 
     // KMK -->
-    private val storeRestored = CompletableDeferred<Unit>()
+    private val storeRestored = kotlinx.coroutines.CompletableDeferred<Unit>()
     private val combinedCbzCreator = CombinedCbzCreator(context, provider, xml)
     // KMK <--
 
