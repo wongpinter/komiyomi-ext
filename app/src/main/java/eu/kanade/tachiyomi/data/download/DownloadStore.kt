@@ -80,7 +80,7 @@ class DownloadStore(
     }
 
     // KMK -->
-    fun addCombinedCbzRequest(manga: Manga, chapters: List<Chapter>) {
+    fun addCombinedCbzRequest(manga: Manga, chapters: List<tachiyomi.domain.chapter.model.Chapter>) {
         val chapterIds = chapters.map { it.id }.distinct()
         if (chapterIds.isEmpty()) return
 
@@ -90,7 +90,7 @@ class DownloadStore(
         }
     }
 
-    fun combinedCbzRequests(): List<CombinedCbzRequest> = preferences.all.mapNotNull { (key, value) ->
+    internal fun combinedCbzRequests(): List<CombinedCbzRequest> = preferences.all.mapNotNull { (key, value) ->
         if (!key.startsWith(COMBINED_CBZ_KEY_PREFIX)) return@mapNotNull null
         val serialized = value as? String ?: return@mapNotNull null
         val request = runCatching { json.decodeFromString<CombinedCbzRequestObject>(serialized) }
@@ -102,7 +102,7 @@ class DownloadStore(
         preferences.edit { remove(getCombinedCbzKey(mangaId)) }
     }
 
-    fun removeCombinedCbzRequestsForChapters(chapters: List<Chapter>) {
+    fun removeCombinedCbzRequestsForChapters(chapters: List<tachiyomi.domain.chapter.model.Chapter>) {
         val chapterIds = chapters.mapTo(hashSetOf<Long>()) { it.id }
         if (chapterIds.isEmpty()) return
         val requests = combinedCbzRequests().filter { request -> request.chapterIds.any(chapterIds::contains) }
