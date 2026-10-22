@@ -69,11 +69,21 @@ internal class EpubTocIndex<T> private constructor(val entries: List<Entry<T>>) 
             "",
         ).lowercase(Locale.ROOT).trim()
 
+        // KMK -->
         private fun resourceKey(href: String): String? = runCatching {
-            val uri = URI(href).normalize()
-            if (uri.isAbsolute || uri.rawAuthority != null) return@runCatching null
-            uri.path?.takeIf { it.isNotEmpty() }?.let { it + (uri.rawQuery?.let { query -> "?$query" } ?: "") }
+            val clean = href.trim()
+            if (clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true)) {
+                return@runCatching null
+            }
+            val withoutHash = clean.substringBefore('#')
+            val path = withoutHash.substringBefore('?')
+            val query = if (withoutHash.contains('?')) "?" + withoutHash.substringAfter('?') else ""
+            if (path.isEmpty()) return@runCatching null
+            // Safe path normalization without URI() throwing on spaces or brackets
+            val normalizedPath = java.io.File(path).normalize().path.replace('\\', '/')
+            if (normalizedPath.isNotEmpty()) normalizedPath + query else null
         }.getOrNull()
+        // KMK <--
 
         suspend fun <T> build(
             roots: List<T>,

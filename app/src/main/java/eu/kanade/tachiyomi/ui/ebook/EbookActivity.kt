@@ -4,8 +4,10 @@
 
 package eu.kanade.tachiyomi.ui.ebook
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
@@ -96,6 +98,9 @@ class EbookActivity : BaseActivity() {
     private var currentPdfPage by mutableIntStateOf(0)
     private var pdfHudVisible by mutableStateOf(false)
     private var ebookSettingsVisible by mutableStateOf(false)
+    // KMK -->
+    private var opdsCatalogVisible by mutableStateOf(false)
+    // KMK <--
     private var bookDetailsDialog: BottomSheetDialog? = null
     private var bookDetailsLoadJob: Job? = null
     private var bookDetailsUi by mutableStateOf<BookDetailsUi?>(null)
@@ -103,6 +108,7 @@ class EbookActivity : BaseActivity() {
     private var chapterPull: ChapterPull? = null
     private var chapterTurnFromHref: String? = null
     // KMK -->
+    private var navigatingBackwards = false
     private var readerTapStart: ReaderTapStart? = null
 
     private data class ReaderTapStart(val x: Float, val y: Float, val downTime: Long)
@@ -114,9 +120,39 @@ class EbookActivity : BaseActivity() {
         val x: Float,
         val y: Float,
         val startedAtEnd: Deferred<Boolean>,
+        // KMK -->
+        val startedAtStart: Deferred<Boolean>,
+        // KMK <--
     )
 
-    private companion object {
+    companion object {
+        // KMK -->
+        const val EXTRA_FILE_PATH = "extra_ebook_file_path"
+        private const val KEY_OPEN_BOOK_PATH = "key_open_book_path"
+
+        fun newIntent(context: Context, file: File): Intent {
+            return Intent(context, EbookActivity::class.java).apply {
+                putExtra(EXTRA_FILE_PATH, file.absolutePath)
+                if (Injekt.get<ReaderPreferences>().readerMultiTask().get()) {
+                    data = Uri.Builder()
+                        .scheme("komiyomi")
+                        .authority("ebook")
+                        .appendPath(file.name)
+                        .build()
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                            Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                            Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS,
+                    )
+                }
+            }
+        }
+
+        const val AT_CHAPTER_START =
+            "(function(){const e=document.scrollingElement||document.documentElement;" +
+                "return e.scrollHeight>0&&e.scrollTop<=2})()"
+        // KMK <--
+
         const val AT_CHAPTER_END =
             "(function(){const e=document.scrollingElement||document.documentElement;" +
                 "return e.scrollHeight>0&&e.scrollHeight-e.clientHeight-e.scrollTop<=4})()"
@@ -153,6 +189,24 @@ class EbookActivity : BaseActivity() {
         }
     }
 
+    // KMK -->
+    private val selectFont = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val imported = EpubCustomFontsManager.importFont(this, uri)
+        if (imported != null) {
+            Toast.makeText(this, "Imported font: ${imported.name}", Toast.LENGTH_SHORT).show()
+            val state = ready
+            if (state != null) {
+                applyPreferences(state) { current ->
+                    EpubFonts.select(current, imported.fontFamily)
+                }
+            }
+        } else {
+            Toast.makeText(this, "Failed to import font", Toast.LENGTH_SHORT).show()
+        }
+    }
+    // KMK <--
+
     override fun onCreate(savedInstanceState: Bundle?) {
         pickingBook = savedInstanceState?.getBoolean("epub-picking-book") ?: false
         registerSecureActivity(this)
@@ -164,6 +218,16 @@ class EbookActivity : BaseActivity() {
             supportFragmentManager.beginTransaction().remove(it).commitNow()
         }
         model = ViewModelProvider(this)[EpubViewModel::class.java]
+        // KMK -->
+        val initialFilePath = savedInstanceState?.getString(KEY_OPEN_BOOK_PATH)
+            ?: intent?.getStringExtra(EXTRA_FILE_PATH)
+        if (initialFilePath != null) {
+            val file = java.io.File(initialFilePath)
+            if (file.isFile) {
+                model.openBook(file)
+            }
+        }
+        // KMK <--
         combine(
             readerPreferences.keepScreenOn().changes(),
             model.state,
@@ -189,7 +253,17 @@ class EbookActivity : BaseActivity() {
                 val folderSources by model.folderSources.collectAsState()
                 val loading by model.libraryLoading.collectAsState()
                 val libraryError by model.libraryError.collectAsState()
-                if (ebookSettingsVisible) {
+                // KMK -->
+                if (opdsCatalogVisible) {
+                    eu.kanade.tachiyomi.ui.ebook.opds.OpdsCatalogScreen(
+                        servers = model.opdsServers(),
+                        onAddServer = model::addOpdsServer,
+                        onFetchFeed = model::fetchOpdsFeed,
+                        onDownloadBook = model::downloadOpdsBook,
+                        onClose = { opdsCatalogVisible = false },
+                    )
+                } else if (ebookSettingsVisible) {
+                // KMK <--
                     EbookSettingsContent(
                         readerDefaults = model.ebookReaderDefaults(),
                         shelfSettings = model.shelfSettings(),
@@ -213,7 +287,9 @@ class EbookActivity : BaseActivity() {
                         onSettings = { ebookSettingsVisible = true },
                         onScanFolders = model::scanFolderSources,
                         onRemoveFolder = model::removeFolderSource,
-                        onOpen = model::openBook,
+                        // KMK -->
+                        onOpen = ::openBook,
+                        // KMK <--
                         onRemove = ::confirmRemoveBook,
                         onRemoveAll = ::confirmRemoveAll,
                         onExit = ::finish,
@@ -224,6 +300,9 @@ class EbookActivity : BaseActivity() {
                         onCancelImport = model::cancelImport,
                         onDetails = ::showShelfBookDetails,
                         loadCover = model::coverFor,
+                        // KMK -->
+                        onOpds = { opdsCatalogVisible = true },
+                        // KMK <--
                     )
                 }
             }
@@ -338,6 +417,9 @@ class EbookActivity : BaseActivity() {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     when {
+                        // KMK -->
+                        opdsCatalogVisible -> opdsCatalogVisible = false
+                        // KMK <--
                         ebookSettingsVisible -> ebookSettingsVisible = false
                         // KMK -->
                         ready != null && !controlsVisible -> updateReaderControls(true)
@@ -529,7 +611,23 @@ class EbookActivity : BaseActivity() {
             .show()
     }
 
+    // KMK -->
+    private fun openBook(file: java.io.File) {
+        if (readerPreferences.readerMultiTask().get()) {
+            startActivity(newIntent(this, file))
+        } else {
+            model.openBook(file)
+        }
+    }
+    // KMK <--
+
     private fun returnToLibrary() {
+        // KMK -->
+        if (intent.hasExtra(EXTRA_FILE_PATH) && readerPreferences.readerMultiTask().get()) {
+            finish()
+            return
+        }
+        // KMK <--
         chapterPull?.startedAtEnd?.cancel()
         chapterPull = null
         chapterTurnFromHref = null
@@ -662,6 +760,10 @@ class EbookActivity : BaseActivity() {
             model.saveLocation(state.file, reader.currentLocator.value)
             model.savePreferences(state.file, changed)
             reader.submitPreferences(changed)
+            // KMK -->
+            applyHeadingAlignmentOverride(reader)
+            applyCustomFontOverride(reader)
+            // KMK <--
         }
     }
 
@@ -710,6 +812,16 @@ class EbookActivity : BaseActivity() {
             configuration = EpubFonts.configuration(),
             paginationListener = object : EpubNavigatorFragment.PaginationListener {
                 override fun onPageLoaded() {
+                    // KMK -->
+                    applyHeadingAlignmentOverride(reader)
+                    applyCustomFontOverride(reader)
+                    if (navigatingBackwards) {
+                        navigatingBackwards = false
+                        reader.evaluateJavascript(
+                            "(function(){const e=document.scrollingElement||document.documentElement||document.body;if(e)e.scrollTop=e.scrollHeight;})()",
+                        )
+                    }
+                    // KMK <--
                     if (firstPageReported) return
                     firstPageReported = true
                     xLogI("EPUB performance: first page-loaded callback after attachMs=${(System.nanoTime() - attachStarted) / 1_000_000}")
@@ -734,13 +846,14 @@ class EbookActivity : BaseActivity() {
         val reader = factory.instantiate(classLoader, EpubNavigatorFragment::class.java.name) as EpubNavigatorFragment
         navigator = reader
         supportFragmentManager.beginTransaction().replace(container.id, reader).commitNow()
+        // KMK -->
+        var saveLocationJob: Job? = null
         locationJob = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 reader.currentLocator.collect { locator ->
                     if (chapterTurnFromHref != null && locator.href.toString().substringBefore('#') != chapterTurnFromHref) {
                         chapterTurnFromHref = null
                     }
-                    model.saveLocation(state.file, locator)
                     val pendingJump = pendingTocJump
                     if (pendingJump != null && locator.href.toString().substringBefore('#') == pendingJump.targetHref) {
                         pendingTocJump = null
@@ -751,9 +864,17 @@ class EbookActivity : BaseActivity() {
                         ?.toFloat()
                         ?.coerceIn(0f, 1f)
                         ?: currentProgress
+
+                    // Debounce disk writes to avoid UI-thread SharedPreferences flooding during smooth scroll
+                    saveLocationJob?.cancel()
+                    saveLocationJob = lifecycleScope.launch(Dispatchers.IO) {
+                        delay(400)
+                        model.saveLocation(state.file, locator)
+                    }
                 }
             }
         }
+        // KMK <--
         updateReaderControls(false)
     }
 
@@ -769,6 +890,9 @@ class EbookActivity : BaseActivity() {
                 }
                 // KMK <--
                 chapterPull?.startedAtEnd?.cancel()
+                // KMK -->
+                chapterPull?.startedAtStart?.cancel()
+                // KMK <--
                 chapterPull = null
                 val state = ready
                 val reader = navigator
@@ -785,6 +909,9 @@ class EbookActivity : BaseActivity() {
                         x = event.x,
                         y = event.y,
                         startedAtEnd = lifecycleScope.async { reader.evaluateJavascript(AT_CHAPTER_END) == "true" },
+                        // KMK -->
+                        startedAtStart = lifecycleScope.async { reader.evaluateJavascript(AT_CHAPTER_START) == "true" },
+                        // KMK <--
                     )
                 }
             }
@@ -812,39 +939,80 @@ class EbookActivity : BaseActivity() {
                 // KMK <--
                 val pull = chapterPull
                 chapterPull = null
-                if (pull != null && pull.startedAtEnd.isCompleted && event.pointerCount == 1 &&
-                    pull.y - event.y >= 64.dp && abs(pull.x - event.x) < abs(pull.y - event.y) / 2
-                ) {
-                    lifecycleScope.launch {
-                        val state = ready ?: return@launch
-                        if (!pull.startedAtEnd.await() || navigator !== pull.reader ||
-                            model.preferences(state.file).scroll != true ||
-                            pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
-                            pull.reader.evaluateJavascript(AT_CHAPTER_END) != "true"
-                        ) {
-                            return@launch
+                // KMK -->
+                val pullThreshold = 96.dp
+                val dy = pull?.let { it.y - event.y } ?: 0f
+                val dx = pull?.let { abs(it.x - event.x) } ?: 0f
+
+                if (pull != null && event.pointerCount == 1 && dx < abs(dy) / 1.5f) {
+                    // Next chapter: deliberate pull UP (finger moved up, dy >= pullThreshold)
+                    if (dy >= pullThreshold && pull.startedAtEnd.isCompleted) {
+                        lifecycleScope.launch {
+                            val state = ready ?: return@launch
+                            if (!pull.startedAtEnd.await() || navigator !== pull.reader ||
+                                model.preferences(state.file).scroll != true ||
+                                pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
+                                pull.reader.evaluateJavascript(AT_CHAPTER_END) != "true"
+                            ) {
+                                return@launch
+                            }
+                            val links = state.session.publication.readingOrder
+                            val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
+                            if (index < 0) return@launch
+                            val next = links.getOrNull(index + 1) ?: return@launch
+                            chapterTurnFromHref = pull.href
+                            navigatingBackwards = false
+                            if (!pull.reader.go(next)) {
+                                chapterTurnFromHref = null
+                            } else {
+                                delay(10_000)
+                                if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                            }
                         }
-                        val links = state.session.publication.readingOrder
-                        val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
-                        if (index < 0) return@launch
-                        val next = links.getOrNull(index + 1) ?: return@launch
-                        chapterTurnFromHref = pull.href
-                        if (!pull.reader.go(next)) {
-                            chapterTurnFromHref = null
-                        } else {
-                            delay(10_000)
-                            if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                    }
+                    // Previous chapter: deliberate pull DOWN (finger moved down, -dy >= pullThreshold)
+                    else if (-dy >= pullThreshold && pull.startedAtStart.isCompleted) {
+                        lifecycleScope.launch {
+                            val state = ready ?: return@launch
+                            if (!pull.startedAtStart.await() || navigator !== pull.reader ||
+                                model.preferences(state.file).scroll != true ||
+                                pull.reader.currentLocator.value.href.toString().substringBefore('#') != pull.href ||
+                                pull.reader.evaluateJavascript(AT_CHAPTER_START) != "true"
+                            ) {
+                                return@launch
+                            }
+                            val links = state.session.publication.readingOrder
+                            val index = links.indexOfFirst { it.href.toString().substringBefore('#') == pull.href }
+                            if (index <= 0) return@launch
+                            val prev = links.getOrNull(index - 1) ?: return@launch
+                            chapterTurnFromHref = pull.href
+                            navigatingBackwards = true
+                            if (!pull.reader.go(prev)) {
+                                chapterTurnFromHref = null
+                                navigatingBackwards = false
+                            } else {
+                                delay(10_000)
+                                if (chapterTurnFromHref == pull.href) chapterTurnFromHref = null
+                            }
                         }
+                    } else {
+                        pull.startedAtEnd.cancel()
+                        pull.startedAtStart.cancel()
                     }
                 } else {
                     pull?.startedAtEnd?.cancel()
+                    pull?.startedAtStart?.cancel()
                 }
+                // KMK <--
             }
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
                 // KMK -->
                 readerTapStart = null
                 // KMK <--
                 chapterPull?.startedAtEnd?.cancel()
+                // KMK -->
+                chapterPull?.startedAtStart?.cancel()
+                // KMK <--
                 chapterPull = null
             }
         }
@@ -869,21 +1037,52 @@ class EbookActivity : BaseActivity() {
     private fun showFontPicker() {
         val state = ready ?: return
         val reader = navigator ?: return
-        val families = EpubFonts.families
+        val bundledFamilies = EpubFonts.families
+        val customFonts = EpubCustomFontsManager.listCustomFonts(this)
         val selected = model.preferences(state.file).fontFamily
-        val labels = listOf(stringResource(KMR.strings.ebook_publisher_font)) + families.map { it.name }
-        val checked = families.indexOfFirst { it.fontFamily == selected } + 1
+
+        val labels = mutableListOf<String>()
+        labels.add(stringResource(KMR.strings.ebook_publisher_font))
+        bundledFamilies.forEach { labels.add(it.name) }
+        customFonts.forEach { labels.add("★ " + it.name) }
+        labels.add("+ " + stringResource(KMR.strings.action_import_file))
+
+        val checkedIndex = when {
+            selected == null -> 0
+            bundledFamilies.any { it.fontFamily == selected } -> 1 + bundledFamilies.indexOfFirst { it.fontFamily == selected }
+            customFonts.any { it.fontFamily == selected || it.name.equals(selected.name, ignoreCase = true) } -> {
+                1 + bundledFamilies.size + customFonts.indexOfFirst { it.fontFamily == selected || it.name.equals(selected.name, ignoreCase = true) }
+            }
+            else -> 0
+        }
+
         AlertDialog.Builder(this)
             .setTitle(stringResource(KMR.strings.ebook_font))
-            .setSingleChoiceItems(labels.toTypedArray(), checked) { dialog, index ->
+            .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, index ->
                 if (ready !== state || navigator !== reader) {
                     dialog.dismiss()
                     return@setSingleChoiceItems
                 }
-                applyPreferences(state) { current ->
-                    EpubFonts.select(current, families.getOrNull(index - 1)?.fontFamily)
+                when {
+                    index == 0 -> {
+                        applyPreferences(state) { current -> EpubFonts.select(current, null) }
+                        dialog.dismiss()
+                    }
+                    index <= bundledFamilies.size -> {
+                        val family = bundledFamilies[index - 1].fontFamily
+                        applyPreferences(state) { current -> EpubFonts.select(current, family) }
+                        dialog.dismiss()
+                    }
+                    index <= bundledFamilies.size + customFonts.size -> {
+                        val custom = customFonts[index - 1 - bundledFamilies.size]
+                        applyPreferences(state) { current -> EpubFonts.select(current, custom.fontFamily) }
+                        dialog.dismiss()
+                    }
+                    else -> {
+                        dialog.dismiss()
+                        selectFont.launch(arrayOf("font/*", "application/x-font-ttf", "application/x-font-opentype", "application/octet-stream", "*/*"))
+                    }
                 }
-                dialog.dismiss()
                 updateReaderControls(false)
             }
             .setNegativeButton(stringResource(MR.strings.action_cancel), null)
@@ -1014,6 +1213,72 @@ class EbookActivity : BaseActivity() {
         updateReaderControls(false)
     }
 
+    // KMK -->
+    private fun applyHeadingAlignmentOverride(reader: EpubNavigatorFragment) {
+        val state = ready ?: return
+        val prefs = model.preferences(state.file)
+        if (prefs.textAlign == org.readium.r2.navigator.preferences.TextAlign.JUSTIFY) {
+            reader.evaluateJavascript(
+                """
+                (function() {
+                    var styleId = 'kmk-epub-heading-align';
+                    if (!document.getElementById(styleId)) {
+                        var style = document.createElement('style');
+                        style.id = styleId;
+                        style.textContent = 'h1, h2, h3, h4, h5, h6, [class*="title"], [class*="heading"], header { text-align: start !important; }';
+                        (document.head || document.documentElement).appendChild(style);
+                    }
+                })()
+                """.trimIndent(),
+            )
+        } else {
+            reader.evaluateJavascript(
+                """
+                (function() {
+                    var el = document.getElementById('kmk-epub-heading-align');
+                    if (el && el.parentNode) { el.parentNode.removeChild(el); }
+                })()
+                """.trimIndent(),
+            )
+        }
+    }
+
+    private fun applyCustomFontOverride(reader: EpubNavigatorFragment) {
+        val state = ready ?: return
+        val prefs = model.preferences(state.file)
+        val customFont = EpubCustomFontsManager.findCustomFont(this, prefs.fontFamily)
+        if (customFont != null) {
+            val base64 = EpubCustomFontsManager.getFontBase64(customFont)
+            if (base64 != null) {
+                val format = if (customFont.file.extension.equals("otf", ignoreCase = true)) "opentype" else "truetype"
+                val fontName = customFont.name.replace("'", "\\'")
+                val js = """
+                    (function() {
+                        var styleId = 'kmk-epub-custom-font';
+                        var el = document.getElementById(styleId);
+                        if (!el) {
+                            el = document.createElement('style');
+                            el.id = styleId;
+                            (document.head || document.documentElement).appendChild(el);
+                        }
+                        el.textContent = "@font-face { font-family: '" + '$fontName' + "'; src: url('data:font/$format;charset=utf-8;base64,$base64'); font-display: swap; } body, p, div, span, li, a { font-family: '" + '$fontName' + "', sans-serif !important; }";
+                    })()
+                """.trimIndent()
+                reader.evaluateJavascript(js)
+            }
+        } else {
+            reader.evaluateJavascript(
+                """
+                (function() {
+                    var el = document.getElementById('kmk-epub-custom-font');
+                    if (el && el.parentNode) { el.parentNode.removeChild(el); }
+                })()
+                """.trimIndent(),
+            )
+        }
+    }
+    // KMK <--
+
     private fun updateReaderControls(visible: Boolean) {
         controlsVisible = visible
         val showReaderControls = visible && ready != null
@@ -1062,6 +1327,13 @@ class EbookActivity : BaseActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("epub-picking-book", pickingBook)
+        // KMK -->
+        val currentFile = ready?.file
+            ?: (model.state.value as? EpubViewModel.State.PdfReady)?.file
+        if (currentFile != null) {
+            outState.putString(KEY_OPEN_BOOK_PATH, currentFile.absolutePath)
+        }
+        // KMK <--
         super.onSaveInstanceState(outState)
     }
 

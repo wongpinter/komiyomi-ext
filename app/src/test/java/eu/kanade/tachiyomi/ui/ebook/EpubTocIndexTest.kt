@@ -96,7 +96,10 @@ class EpubTocIndexTest {
         assertEquals(0, tree.currentEntry("Text/./hello%20world.xhtml?v=1#other"))
         assertEquals(1, tree.currentEntry("Text/hello%20world.xhtml?v=2#other"))
         assertEquals(-1, tree.currentEntry("https://example.com/Text/hello%20world.xhtml?v=1"))
-        assertEquals(-1, tree.currentEntry("bad path"))
+        // KMK -->
+        val treeWithSpecialChars = index(listOf(Node("One", "Text/chapter [1] draft.xhtml#anchor")))
+        assertEquals(0, treeWithSpecialChars.currentEntry("Text/chapter [1] draft.xhtml#other"))
+        // KMK <--
     }
 
     @Test

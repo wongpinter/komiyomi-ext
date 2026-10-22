@@ -395,6 +395,32 @@ internal class EpubViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    // KMK -->
+    val opdsClient = eu.kanade.tachiyomi.ui.ebook.opds.OpdsClient()
+
+    fun opdsServers(): List<eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer> = store.opdsServers()
+    fun addOpdsServer(server: eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer) = store.addOpdsServer(server)
+    fun removeOpdsServer(id: String) = store.removeOpdsServer(id)
+
+    suspend fun fetchOpdsFeed(server: eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer, url: String = server.url) =
+        opdsClient.fetchFeed(server, url)
+
+    suspend fun downloadOpdsBook(
+        server: eu.kanade.tachiyomi.ui.ebook.opds.OpdsServer,
+        entry: eu.kanade.tachiyomi.ui.ebook.opds.OpdsEntry,
+        onProgress: (Float) -> Unit = {},
+    ): Result<File> = withContext(Dispatchers.IO) {
+        val downloadUrl = entry.downloadUrl ?: return@withContext Result.failure(IOException("No download URL"))
+        val safeName = entry.title.replace(Regex("[^a-zA-Z0-9.-]"), "_").take(60) + ".epub"
+        val targetFile = File(store.directory, safeName)
+        val result = opdsClient.downloadEpub(server, downloadUrl, targetFile, onProgress)
+        if (result.isSuccess) {
+            refreshLibrary()
+        }
+        result
+    }
+    // KMK <--
+
     sealed interface State {
         data object Idle : State
         data object Opening : State
