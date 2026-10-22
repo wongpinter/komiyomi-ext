@@ -59,9 +59,6 @@ import tachiyomi.core.metadata.comicinfo.COMIC_INFO_FILE
 import tachiyomi.core.metadata.comicinfo.ComicInfo
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.chapter.model.Chapter
-// KMK -->
-import tachiyomi.domain.chapter.repository.ChapterRepository
-// KMK <--
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -69,9 +66,6 @@ import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.kmk.KMR
-// KMK -->
-import tachiyomi.source.local.LocalSource
-// KMK <--
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -101,7 +95,7 @@ class Downloader(
     private val storageManager: StorageManager = Injekt.get(),
     private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
     private val getChapter: tachiyomi.domain.chapter.interactor.GetChapter = Injekt.get(),
-    private val chapterRepository: ChapterRepository = Injekt.get(),
+    private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository = Injekt.get(),
     // KMK <--
 ) {
 
@@ -350,7 +344,7 @@ class Downloader(
     ) {
         // KMK -->
         val resolvedSource = sourceManager.get(manga.source) ?: return
-        if (resolvedSource is LocalSource) {
+        if (resolvedSource is tachiyomi.source.local.LocalSource) {
             if (chapters.isNotEmpty() || combineCbzChapters.isNullOrEmpty()) return
             val wasEmpty = queueState.value.isEmpty()
             store.addCombinedCbzRequest(manga, combineCbzChapters)
@@ -894,7 +888,7 @@ class Downloader(
             try {
                 val manga = getManga.await(request.mangaId) ?: return@forEach
                 val source = sourceManager.get(manga.source) ?: return@forEach
-                if (source !is HttpSource && source !is LocalSource) return@forEach
+                if (source !is HttpSource && source !is tachiyomi.source.local.LocalSource) return@forEach
                 val chapters = request.chapterIds.mapNotNull { getChapter.await(it) }
                 if (!request.outputCreated && chapters.size != request.chapterIds.size) return@forEach
                 if (request.outputCreated && (source is HttpSource || chapters.isEmpty())) {
