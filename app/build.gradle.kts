@@ -31,8 +31,8 @@ android {
         // KMK <--
 
         // KMK -->
-        versionCode = 85
-        versionName = "2.1.0"
+        versionCode = 86
+        versionName = "2.1.1"
         // KMK <--
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
