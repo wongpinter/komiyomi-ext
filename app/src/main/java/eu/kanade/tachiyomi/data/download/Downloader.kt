@@ -341,7 +341,6 @@ class Downloader(
         combineCbzChapters: List<Chapter>? = null,
         // KMK <--
     ) {
-
         val source = sourceManager.get(manga.source) as? HttpSource ?: return
 
         // KMK -->
