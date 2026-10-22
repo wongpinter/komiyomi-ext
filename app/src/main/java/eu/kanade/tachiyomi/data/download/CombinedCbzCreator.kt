@@ -75,11 +75,9 @@ internal class CombinedCbzCreator(
                 }
             }
         }
+        val chapterKeysToKeep = if (preserveExistingParts) existingChapterKeys else emptySet()
         val manifest = CombinedCbzManifest(
-            chapterKeys =
-                ((if (preserveExistingParts) existingChapterKeys else emptySet()) +
-                    chaptersToAdd.map { it.combinedCbzKey() })
-                    .distinct(),
+            chapterKeys = (chapterKeysToKeep + chaptersToAdd.map { it.combinedCbzKey() }).distinct(),
         )
 
         val encrypt = CbzCrypto.getPasswordProtectDlPref() && CbzCrypto.isPasswordSet()
