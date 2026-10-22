@@ -178,7 +178,8 @@
         <!-- KMK -->
         <activity
             android:name=".ui.ebook.EbookActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:launchMode="standard" />
         <!-- KMK -->
 
         <activity

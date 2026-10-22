@@ -4,8 +4,10 @@
 
 package eu.kanade.tachiyomi.ui.ebook
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
@@ -120,8 +122,29 @@ class EbookActivity : BaseActivity() {
         // KMK <--
     )
 
-    private companion object {
+    companion object {
         // KMK -->
+        const val EXTRA_FILE_PATH = "extra_ebook_file_path"
+        private const val KEY_OPEN_BOOK_PATH = "key_open_book_path"
+
+        fun newIntent(context: Context, file: File): Intent {
+            return Intent(context, EbookActivity::class.java).apply {
+                putExtra(EXTRA_FILE_PATH, file.absolutePath)
+                if (Injekt.get<ReaderPreferences>().readerMultiTask().get()) {
+                    data = Uri.Builder()
+                        .scheme("komiyomi")
+                        .authority("ebook")
+                        .appendPath(file.name)
+                        .build()
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
+                            Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                            Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS,
+                    )
+                }
+            }
+        }
+
         const val AT_CHAPTER_START =
             "(function(){const e=document.scrollingElement||document.documentElement;" +
                 "return e.scrollHeight>0&&e.scrollTop<=2})()"
@@ -174,6 +197,16 @@ class EbookActivity : BaseActivity() {
             supportFragmentManager.beginTransaction().remove(it).commitNow()
         }
         model = ViewModelProvider(this)[EpubViewModel::class.java]
+        // KMK -->
+        val initialFilePath = savedInstanceState?.getString(KEY_OPEN_BOOK_PATH)
+            ?: intent?.getStringExtra(EXTRA_FILE_PATH)
+        if (initialFilePath != null) {
+            val file = java.io.File(initialFilePath)
+            if (file.isFile) {
+                model.openBook(file)
+            }
+        }
+        // KMK <--
         combine(
             readerPreferences.keepScreenOn().changes(),
             model.state,
@@ -223,7 +256,9 @@ class EbookActivity : BaseActivity() {
                         onSettings = { ebookSettingsVisible = true },
                         onScanFolders = model::scanFolderSources,
                         onRemoveFolder = model::removeFolderSource,
-                        onOpen = model::openBook,
+                        // KMK -->
+                        onOpen = ::openBook,
+                        // KMK <--
                         onRemove = ::confirmRemoveBook,
                         onRemoveAll = ::confirmRemoveAll,
                         onExit = ::finish,
@@ -539,7 +574,23 @@ class EbookActivity : BaseActivity() {
             .show()
     }
 
+    // KMK -->
+    private fun openBook(file: java.io.File) {
+        if (readerPreferences.readerMultiTask().get()) {
+            startActivity(newIntent(this, file))
+        } else {
+            model.openBook(file)
+        }
+    }
+    // KMK <--
+
     private fun returnToLibrary() {
+        // KMK -->
+        if (intent.hasExtra(EXTRA_FILE_PATH) && readerPreferences.readerMultiTask().get()) {
+            finish()
+            return
+        }
+        // KMK <--
         chapterPull?.startedAtEnd?.cancel()
         chapterPull = null
         chapterTurnFromHref = null
@@ -1171,6 +1222,13 @@ class EbookActivity : BaseActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("epub-picking-book", pickingBook)
+        // KMK -->
+        val currentFile = ready?.file
+            ?: (model.state.value as? EpubViewModel.State.PdfReady)?.file
+        if (currentFile != null) {
+            outState.putString(KEY_OPEN_BOOK_PATH, currentFile.absolutePath)
+        }
+        // KMK <--
         super.onSaveInstanceState(outState)
     }
 
