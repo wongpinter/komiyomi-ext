@@ -9,7 +9,8 @@ import java.math.BigDecimal
 // KMK -->
 private val SERIES_WHITESPACE_REGEX = Regex("\\s+")
 private val CHAPTER_NUMBER_REGEX = Regex("^\\s*([+-]?\\d+(?:\\.\\d+)?)")
-private val COMBINED_CBZ_PART_NAME_REGEX = Regex("Part \\d+\\.cbz", RegexOption.IGNORE_CASE)
+private val COMBINED_CBZ_PART_NAME_REGEX = Regex("Combined Part \\d+\\.cbz", RegexOption.IGNORE_CASE)
+private val LEGACY_COMBINED_CBZ_PART_NAME_REGEX = Regex("Part \\d+\\.cbz", RegexOption.IGNORE_CASE)
 // KMK <--
 
 // KMK -->
@@ -117,8 +118,13 @@ internal fun sortOfflineChapters(
 
 internal fun LocalArchiveEntry.isCombinedCbzPart(): Boolean =
     !isDirectory &&
-        parentPath.substringAfterLast('/').equals(COMBINED_CBZ_OUTPUT_DIRECTORY_NAME, ignoreCase = true) &&
-        COMBINED_CBZ_PART_NAME_REGEX.matches(name)
+        (
+            COMBINED_CBZ_PART_NAME_REGEX.matches(name) ||
+                (
+                    parentPath.substringAfterLast('/').equals(COMBINED_CBZ_OUTPUT_DIRECTORY_NAME, ignoreCase = true) &&
+                        LEGACY_COMBINED_CBZ_PART_NAME_REGEX.matches(name)
+                    )
+            )
 
 private data class NumberedArchiveEntry(
     val entry: LocalArchiveEntry,
