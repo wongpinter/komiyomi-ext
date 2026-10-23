@@ -511,7 +511,27 @@ class DownloadCache(
         updateDiskCacheJob = scope.launchIO {
             delay(1000)
             ensureActive()
-            val bytes = ProtoBuf.encodeToByteArray(rootDownloadsDir)
+            // KMK -->
+            // Snapshot mutable directory maps while holding their mutation lock. Encoding the
+            // live cache can race with download updates and throw ConcurrentModificationException.
+            val cacheSnapshot = rootDownloadsDirMutex.withLock {
+                RootDirectory(
+                    dir = rootDownloadsDir.dir,
+                    sourceDirs = rootDownloadsDir.sourceDirs.mapValues { (_, sourceDir) ->
+                        SourceDirectory(
+                            dir = sourceDir.dir,
+                            mangaDirs = sourceDir.mangaDirs.mapValues { (_, mangaDir) ->
+                                MangaDirectory(
+                                    dir = mangaDir.dir,
+                                    chapterDirs = mangaDir.chapterDirs.toMutableSet(),
+                                )
+                            },
+                        )
+                    },
+                )
+            }
+            // KMK <--
+            val bytes = ProtoBuf.encodeToByteArray(cacheSnapshot)
             ensureActive()
             try {
                 diskCacheFile.writeBytes(bytes)
