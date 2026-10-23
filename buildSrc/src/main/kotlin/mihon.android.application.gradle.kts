@@ -22,8 +22,8 @@ android {
         // KMK <--
 
         // KMK -->
-        versionCode = 89
-        versionName = "2.1.4"
+        versionCode = 90
+        versionName = "2.1.5"
         // KMK <--
 
         targetSdk = AndroidConfig.TARGET_SDK
