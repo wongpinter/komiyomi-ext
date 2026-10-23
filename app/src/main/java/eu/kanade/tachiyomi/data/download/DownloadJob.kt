@@ -21,12 +21,9 @@ import eu.kanade.tachiyomi.util.system.komiyomiExtIconBitmap
 import eu.kanade.tachiyomi.util.system.networkStateFlow
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combineTransform
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import tachiyomi.domain.download.service.DownloadPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -62,7 +59,7 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
 
     override suspend fun doWork(): Result {
         // KMK -->
-        var networkCheck = !queueNeedsNetwork() || checkNetworkState(
+        val networkCheck = !queueNeedsNetwork() || checkNetworkState(
             applicationContext.activeNetworkState(),
             downloadPreferences.downloadOnlyOverWifi().get(),
         )
@@ -73,13 +70,11 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
             return Result.failure()
         }
 
-        setForegroundSafely()
-
-        coroutineScope {
-            combineTransform(
+        // KMK -->
+        runDownloadSession(
+            networkAllowed = combineTransform(
                 applicationContext.networkStateFlow(),
                 downloadPreferences.downloadOnlyOverWifi().changes(),
-                // KMK -->
                 downloadManager.queueState,
                 transform = { a, b, queue ->
                     emit(
@@ -87,16 +82,16 @@ class DownloadJob(private val context: Context, workerParams: WorkerParameters) 
                             checkNetworkState(a, b),
                     )
                 },
-                // KMK <--
-            )
-                .onEach { networkCheck = it }
-                .launchIn(this)
-        }
-
-        // Keep the worker running when needed
-        while (active) {
-            active = !isStopped && downloadManager.isRunning && networkCheck
-        }
+            ),
+            isRunning = { !isStopped && downloadManager.isRunning },
+            onStart = { setForegroundSafely() },
+            onStop = {
+                if (downloadManager.isRunning) {
+                    downloadManager.downloaderStop()
+                }
+            },
+        )
+        // KMK <--
 
         return Result.success()
     }

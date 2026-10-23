@@ -3,8 +3,8 @@ plugins {
     id("mihon.library")
     kotlin("android")
 }
-android {
-    namespace = "com.wongpinter.komiyomi.epub"
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("com.wongpinter.komiyomi.epub")
 }
 dependencies {
     api(libs.readium.navigator)

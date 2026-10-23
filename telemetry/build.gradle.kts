@@ -5,20 +5,17 @@ plugins {
     kotlin("android")
 }
 
-android {
-    namespace = "mihon.telemetry"
-
-    sourceSets {
-        getByName("main") {
-            if (Config.includeTelemetry) {
-                kotlin.srcDirs("src/firebase/kotlin")
-            } else {
-                kotlin.srcDirs("src/noop/kotlin")
-                manifest.srcFile("src/noop/AndroidManifext.xml")
-            }
-        }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("mihon.telemetry")
+    if (Config.includeTelemetry) {
+        sourceSetKotlinDirs("main", "src/firebase/kotlin")
+    } else {
+        sourceSetKotlinDirs("main", "src/noop/kotlin")
+        sourceSetManifest("main", "src/noop/AndroidManifext.xml")
     }
 }
+// KMK <--
 
 dependencies {
     if (Config.includeTelemetry) {

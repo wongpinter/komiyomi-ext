@@ -1,52 +1,32 @@
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
-
 plugins {
-    id("mihon.library")
-    kotlin("multiplatform")
+    // KMK -->
+    id("mihon.source-local")
+    // KMK <--
 }
 
-kotlin {
-    androidTarget()
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(projects.sourceApi)
-                api(projects.i18n)
-                // SY -->
-                api(projects.i18nSy)
-                // SY <--
+// KMK -->
+dependencies {
+    add("commonMainImplementation", projects.sourceApi)
+    add("commonMainApi", projects.i18n)
+    // SY -->
+    add("commonMainApi", projects.i18nSy)
+    // SY <--
+    add("commonMainImplementation", libs.unifile)
 
-                implementation(libs.unifile)
-            }
-        }
-        val androidMain by getting {
-            dependencies {
-                implementation(projects.core.archive)
-                implementation(projects.core.common)
-                implementation(projects.coreMetadata)
+    add("androidMainImplementation", projects.core.archive)
+    add("androidMainImplementation", projects.core.common)
+    add("androidMainImplementation", projects.coreMetadata)
 
-                // Move ChapterRecognition to separate module?
-                implementation(projects.domain)
-
-                implementation(kotlinx.bundles.serialization)
-            }
-        }
-    }
-
-    @OptIn(ExperimentalKotlinGradlePluginApi::class)
-    compilerOptions {
-        freeCompilerArgs.addAll(
-            "-Xexpect-actual-classes",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-        )
-    }
+    // Move ChapterRecognition to separate module?
+    add("androidMainImplementation", projects.domain)
+    add("androidMainImplementation", kotlinx.bundles.serialization)
 }
+// KMK <--
 
-android {
-    namespace = "tachiyomi.source.local"
-
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("tachiyomi.source.local")
+    testInstrumentationRunner("androidx.test.runner.AndroidJUnitRunner")
+    consumerProguardFiles("consumer-rules.pro")
 }
+// KMK <--

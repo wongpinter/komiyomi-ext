@@ -144,6 +144,24 @@ Package roots: `eu.kanade.tachiyomi.*` (legacy UI), `tachiyomi.*` (domain/data),
 
 ---
 
+## Main user flows
+
+When changing a feature, trace it from the UI event through its asynchronous work and persistence, then back to the UI state, notification, or files. These are the usual starting points:
+
+| Flow | Starting points and handoffs |
+|------|-------------------------------|
+| App startup and navigation | `app/src/main/java/eu/kanade/tachiyomi/App.kt` initializes app services and Injekt modules; `app/src/main/java/eu/kanade/tachiyomi/ui/main/MainActivity.kt` hosts Voyager navigation. Activities such as `ReaderActivity` and `DeepLinkActivity` handle flows outside the Voyager screen stack. |
+| Browse sources and open manga | Browse screens and their ScreenModels resolve sources through `AndroidSourceManager` and the `source-api` interfaces. Source results (`SManga`, `SChapter`) cross into domain models at conversion boundaries; manga detail state and actions are coordinated by `app/src/main/java/eu/kanade/tachiyomi/ui/manga/MangaScreenModel.kt`. |
+| Library refresh | `app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryScreenModel.kt` starts the update flow; `app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt` performs background work, asks sources for updated chapter lists, and coordinates progress and update results with repositories and notifications. |
+| Download chapters | ScreenModels such as `LibraryScreenModel` and `MangaScreenModel` submit chapters to `app/src/main/java/eu/kanade/tachiyomi/data/download/DownloadManager.kt`. `app/src/main/java/eu/kanade/tachiyomi/data/download/DownloadJob.kt` runs the queued work through WorkManager; `app/src/main/java/eu/kanade/tachiyomi/data/download/Downloader.kt` fetches page data, writes chapter files, and updates download state. Follow both cancellation/error handling and the completion path when changing this flow. |
+| Read a chapter | `ReaderActivity` receives manga/chapter IDs, then `app/src/main/java/eu/kanade/tachiyomi/ui/reader/ReaderViewModel.kt` loads chapter/page state and coordinates reader progress. Follow the chapter loader, page loader/viewer, and archive/source implementation when changing file access or reading behavior. |
+| Local library and combined CBZ | `source-local/src/androidMain/kotlin/tachiyomi/source/local/LocalSource.kt` exposes local archives as manga and chapters. Local manga detail actions are handled by `MangaScreenModel`; combined archive creation is in `app/src/main/java/eu/kanade/tachiyomi/data/download/CombinedCbzCreator.kt`. Check archive ordering, ComicInfo metadata, output recovery, and source-file cleanup together when changing this feature. |
+| Manage installed extensions | `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsScreenModel.kt` and `app/src/main/java/eu/kanade/tachiyomi/ui/browse/extension/ExtensionsTab.kt` own the extension UI flow; source discovery and source instances are managed through `AndroidSourceManager`. The extension catalog contains installable APKs outside this repository; `source-api` defines the compatibility boundary. |
+
+For new behavior, keep Compose focused on rendering and user events; put lifecycle-bound work in a ScreenModel scope, reusable business rules in a domain interactor/service, persistence behind repository interfaces, and long-running or restartable work in the existing worker/job layer. Check the caller and the downstream implementation before changing a shared service.
+
+---
+
 ## Extensions & sources
 
 - Catalog sources: installable APK extensions (not in this repo).

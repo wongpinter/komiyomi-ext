@@ -89,6 +89,8 @@ class DownloadStore(
         chapters: List<tachiyomi.domain.chapter.model.Chapter>,
         seriesKey: String? = null,
         seriesTitle: String? = null,
+        seriesMangaId: Long? = null,
+        outputSourceId: Long? = null,
     ): Boolean {
         val chapterIds = chapters.map { it.id }.distinct()
         if (chapterIds.isEmpty()) return false
@@ -103,6 +105,8 @@ class DownloadStore(
             requestId = UUID.randomUUID().toString(),
             seriesKey = seriesKey,
             seriesTitle = seriesTitle,
+            seriesMangaId = seriesMangaId,
+            outputSourceId = outputSourceId,
             totalChapterCount = chapterIds.size,
             currentChapterIndex = 0,
         )
@@ -204,6 +208,44 @@ class DownloadStore(
         }
     }
 
+    @Synchronized
+    internal fun updateCombinedCbzRequestGroupStatus(
+        requests: List<CombinedCbzRequest>,
+        status: CombinedCbzStatus,
+    ): Boolean = updateCombinedCbzRequestGroup(requests) { it.copy(status = status) }
+
+    @Synchronized
+    internal fun markCombinedCbzRequestGroupOutputCreated(requests: List<CombinedCbzRequest>): Boolean =
+        updateCombinedCbzRequestGroup(requests) {
+            it.copy(
+                outputCreated = true,
+                status = CombinedCbzStatus.CLEANING,
+                currentChapter = null,
+                completedChapterCount = it.totalChapterCount,
+                currentChapterIndex = 0,
+            )
+        }
+
+    private fun updateCombinedCbzRequestGroup(
+        requests: List<CombinedCbzRequest>,
+        transform: (CombinedCbzRequestObject) -> CombinedCbzRequestObject,
+    ): Boolean {
+        if (requests.isEmpty()) return false
+        val updates = mutableListOf<Pair<String, CombinedCbzRequestObject>>()
+        requests.forEach { request ->
+            val key = getCombinedCbzKey(request.mangaId)
+            val current = preferences.getString(key, null)
+                ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
+                ?: return false
+            if (current.requestId != request.requestId) return false
+            updates += key to transform(current)
+        }
+        preferences.edit(commit = true) {
+            updates.forEach { (key, request) -> putString(key, json.encodeToString(request)) }
+        }
+        return true
+    }
+
     private fun getCombinedCbzKey(mangaId: Long) = "$COMBINED_CBZ_KEY_PREFIX$mangaId"
     // KMK <--
 
@@ -289,6 +331,8 @@ data class CombinedCbzRequest(
     val requestId: String,
     val seriesKey: String? = null,
     val seriesTitle: String? = null,
+    val seriesMangaId: Long? = null,
+    val outputSourceId: Long? = null,
     val status: CombinedCbzStatus = CombinedCbzStatus.QUEUED,
     val completedChapterCount: Int = 0,
     val totalChapterCount: Int = chapterIds.size,
@@ -317,6 +361,8 @@ private data class CombinedCbzRequestObject(
     val requestId: String = "legacy-" + mangaId,
     val seriesKey: String? = null,
     val seriesTitle: String? = null,
+    val seriesMangaId: Long? = null,
+    val outputSourceId: Long? = null,
     val status: CombinedCbzStatus = CombinedCbzStatus.QUEUED,
     val completedChapterCount: Int = 0,
     val totalChapterCount: Int = chapterIds.size,
@@ -331,6 +377,8 @@ private data class CombinedCbzRequestObject(
         requestId = requestId,
         seriesKey = seriesKey,
         seriesTitle = seriesTitle,
+        seriesMangaId = seriesMangaId,
+        outputSourceId = outputSourceId,
         status = status,
         completedChapterCount = completedChapterCount,
         totalChapterCount = totalChapterCount,
@@ -339,6 +387,11 @@ private data class CombinedCbzRequestObject(
         errorMessage = errorMessage,
     )
 }
+internal fun groupCombinedCbzRequests(requests: List<CombinedCbzRequest>): List<List<CombinedCbzRequest>> =
+    requests.filter { it.status.isActive }
+        .groupBy { request -> request.seriesKey?.let { "series:$it" } ?: "request:${request.requestId}" }
+        .values
+        .toList()
 // KMK <--
 
 /**

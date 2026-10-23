@@ -4,14 +4,13 @@ plugins {
     kotlin("android")
 }
 
-android {
-    namespace = "tachiyomi.presentation.widget"
-
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("tachiyomi.presentation.widget")
+    testInstrumentationRunner("androidx.test.runner.AndroidJUnitRunner")
+    consumerProguardFiles("consumer-rules.pro")
 }
+// KMK <--
 
 dependencies {
     implementation(projects.core.common)

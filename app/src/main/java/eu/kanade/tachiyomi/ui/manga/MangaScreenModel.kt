@@ -1092,7 +1092,9 @@ class MangaScreenModel(
             // SY -->
             @Suppress("NAME_SHADOWING")
             val manga = mergedData?.manga?.get(chapter.mangaId) ?: manga
-            val source = mergedData?.sources?.find { manga.source == it.id }?.takeIf { mergedData.sources.size > 2 }
+            // KMK -->
+            val source = mergedData?.sources?.find { manga.source == it.id }
+            // KMK <--
             // SY <--
             val downloaded = if (manga.isLocal()) {
                 true
@@ -1221,7 +1223,7 @@ class MangaScreenModel(
     /**
      * @throws IllegalStateException if the swipe action is [LibraryPreferences.ChapterSwipeAction.Disabled]
      */
-    private fun executeChapterSwipeAction(
+    private suspend fun executeChapterSwipeAction(
         chapterItem: ChapterList.Item,
         swipeAction: LibraryPreferences.ChapterSwipeAction,
     ) {
@@ -1234,18 +1236,29 @@ class MangaScreenModel(
                 bookmarkChapters(listOf(chapter), !chapter.bookmark)
             }
             LibraryPreferences.ChapterSwipeAction.Download -> {
-                val downloadAction: ChapterDownloadAction = when (chapterItem.downloadState) {
-                    Download.State.ERROR,
-                    Download.State.NOT_DOWNLOADED,
-                    -> ChapterDownloadAction.START_NOW
-                    Download.State.QUEUE,
-                    Download.State.DOWNLOADING,
-                    -> ChapterDownloadAction.CANCEL
-                    Download.State.DOWNLOADED -> ChapterDownloadAction.DELETE
+                val manga = successState?.let { state ->
+                    state.mergedData?.manga?.get(chapter.mangaId) ?: state.manga
+                }
+                val isDownloaded = when (chapterItem.downloadState) {
+                    Download.State.QUEUE, Download.State.DOWNLOADING -> false
+                    else -> if (manga == null || manga.isLocal()) {
+                        chapterItem.downloadState == Download.State.DOWNLOADED
+                    } else {
+                        withIOContext {
+                            downloadManager.isChapterDownloaded(
+                                chapter.name,
+                                chapter.scanlator,
+                                chapter.url,
+                                manga.ogTitle,
+                                manga.source,
+                                skipCache = true,
+                            )
+                        }
+                    }
                 }
                 runChapterDownloadActions(
                     items = listOf(chapterItem),
-                    action = downloadAction,
+                    action = resolveChapterSwipeDownloadAction(chapterItem.downloadState, isDownloaded),
                 )
             }
             LibraryPreferences.ChapterSwipeAction.Disabled -> throw IllegalStateException()
@@ -1268,11 +1281,34 @@ class MangaScreenModel(
     }
 
     // KMK -->
-    private fun getAllUndownloadedChapters(): List<Chapter> {
-        val chapterItems = if (skipFiltered) filteredChapters.orEmpty() else allChapters.orEmpty()
-        return chapterItems
-            .filter { (_, dlStatus) -> dlStatus == Download.State.NOT_DOWNLOADED }
-            .map { it.chapter }
+    private fun downloadAllUndownloadedChapters() {
+        val state = successState ?: return
+        val chapterItems = (if (skipFiltered) filteredChapters.orEmpty() else allChapters.orEmpty()).toList()
+
+        screenModelScope.launchIO {
+            downloadCache.refreshCache()
+
+            val chaptersToDownload = chapterItems.mapNotNull { (chapter, downloadState) ->
+                val manga = state.mergedData?.manga?.get(chapter.mangaId) ?: state.manga
+                if (manga.isLocal()) return@mapNotNull null
+
+                val shouldDownload = when (downloadState) {
+                    Download.State.ERROR, Download.State.QUEUE, Download.State.DOWNLOADING -> false
+                    Download.State.NOT_DOWNLOADED, Download.State.DOWNLOADED -> !downloadManager.isChapterDownloaded(
+                        chapter.name,
+                        chapter.scanlator,
+                        chapter.url,
+                        manga.ogTitle,
+                        manga.source,
+                    )
+                }
+                if (shouldDownload) chapter else null
+            }
+
+            if (chaptersToDownload.isNotEmpty()) {
+                startDownload(chaptersToDownload, false)
+            }
+        }
     }
 
     private fun getChaptersForCombinedCbz(): List<Chapter>? {
@@ -1370,6 +1406,10 @@ class MangaScreenModel(
             }
             return
         }
+        if (action == DownloadAction.ALL_CHAPTERS) {
+            downloadAllUndownloadedChapters()
+            return
+        }
         // KMK <--
         val chaptersToDownload = when (action) {
             DownloadAction.NEXT_1_CHAPTER -> getUnreadChaptersSorted().take(1)
@@ -1377,7 +1417,7 @@ class MangaScreenModel(
             DownloadAction.NEXT_10_CHAPTERS -> getUnreadChaptersSorted().take(10)
             DownloadAction.NEXT_25_CHAPTERS -> getUnreadChaptersSorted().take(25)
             // KMK -->
-            DownloadAction.ALL_CHAPTERS -> getAllUndownloadedChapters()
+            DownloadAction.ALL_CHAPTERS -> emptyList()
             DownloadAction.CREATE_CBZ -> emptyList()
             // KMK <--
             DownloadAction.UNREAD_CHAPTERS -> getUnreadChapters()
@@ -1497,8 +1537,16 @@ class MangaScreenModel(
                 downloadManager.downloadChapters(
                     manga,
                     downloadGroups[mangaId].orEmpty(),
+                    autoStart = false,
                     combineCbzChapters = combineGroups[mangaId],
+                    combinedCbzSeriesKey = "merged:${state.manga.id}",
+                    combinedCbzSeriesTitle = state.manga.ogTitle,
+                    combinedCbzSeriesMangaId = state.manga.id,
+                    combinedCbzOutputSourceId = state.source.id,
                 )
+            }
+            if (combineGroups.isNotEmpty() || downloadManager.queueState.value.isNotEmpty()) {
+                downloadManager.startDownloads()
             }
             // KMK <--
         } else {
@@ -2254,4 +2302,14 @@ sealed interface RelatedManga {
         }
     }
 }
+
+// KMK -->
+internal fun resolveChapterSwipeDownloadAction(
+    downloadState: Download.State,
+    isDownloaded: Boolean,
+): ChapterDownloadAction = when (downloadState) {
+    Download.State.QUEUE, Download.State.DOWNLOADING -> ChapterDownloadAction.CANCEL
+    else -> if (isDownloaded) ChapterDownloadAction.DELETE else ChapterDownloadAction.START_NOW
+}
+// KMK <--
 // KMK <--

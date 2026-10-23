@@ -143,6 +143,8 @@ class DownloadManager(
         combineCbzChapters: List<Chapter>? = null,
         combinedCbzSeriesKey: String? = null,
         combinedCbzSeriesTitle: String? = null,
+        combinedCbzSeriesMangaId: Long? = null,
+        combinedCbzOutputSourceId: Long? = null,
         // KMK <--
     ) {
         // KMK -->
@@ -153,6 +155,8 @@ class DownloadManager(
             combineCbzChapters,
             combinedCbzSeriesKey,
             combinedCbzSeriesTitle,
+            combinedCbzSeriesMangaId,
+            combinedCbzOutputSourceId,
         )
         // KMK <--
     }

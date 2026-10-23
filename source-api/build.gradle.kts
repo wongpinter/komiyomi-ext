@@ -1,54 +1,37 @@
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
-
 plugins {
-    id("mihon.library")
-    kotlin("multiplatform")
-    kotlin("plugin.serialization")
+    // KMK -->
+    id("mihon.source-api")
+    // KMK <--
     id("com.github.ben-manes.versions")
 }
 
-kotlin {
-    androidTarget()
-    sourceSets {
-        val commonMain by getting {
-            dependencies {
-                api(kotlinx.serialization.json)
-                api(libs.injekt)
-                api(libs.rxjava)
-                api(libs.jsoup)
+// KMK -->
+dependencies {
+    add("commonMainApi", kotlinx.serialization.json)
+    add("commonMainApi", libs.injekt)
+    add("commonMainApi", libs.rxjava)
+    add("commonMainApi", libs.jsoup)
 
-                // SY -->
-                api(projects.i18n)
-                api(projects.i18nSy)
-                api(kotlinx.reflect)
-                // SY <--
+    // SY -->
+    add("commonMainApi", projects.i18n)
+    add("commonMainApi", projects.i18nSy)
+    add("commonMainApi", kotlinx.reflect)
+    // SY <--
 
-                implementation(project.dependencies.platform(compose.bom))
-                implementation(compose.runtime)
-            }
-        }
-        val androidMain by getting {
-            dependencies {
-                implementation(projects.core.common)
-                api(libs.preferencektx)
+    add("commonMainImplementation", project.dependencies.platform(compose.bom))
+    add("commonMainImplementation", compose.runtime)
+    add("androidMainImplementation", projects.core.common)
+    add("androidMainApi", libs.preferencektx)
 
-                // Workaround for https://youtrack.jetbrains.com/issue/KT-57605
-                implementation(kotlinx.coroutines.android)
-                implementation(project.dependencies.platform(kotlinx.coroutines.bom))
-            }
-        }
-    }
-
-    @OptIn(ExperimentalKotlinGradlePluginApi::class)
-    compilerOptions {
-        freeCompilerArgs.add("-Xexpect-actual-classes")
-    }
+    // Workaround for https://youtrack.jetbrains.com/issue/KT-57605
+    add("androidMainImplementation", kotlinx.coroutines.android)
+    add("androidMainImplementation", project.dependencies.platform(kotlinx.coroutines.bom))
 }
+// KMK <--
 
-android {
-    namespace = "eu.kanade.tachiyomi.source"
-
-    defaultConfig {
-        consumerProguardFile("consumer-proguard.pro")
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("eu.kanade.tachiyomi.source")
+    consumerProguardFiles("consumer-proguard.pro")
 }
+// KMK <--

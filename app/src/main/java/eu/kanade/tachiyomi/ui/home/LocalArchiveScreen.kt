@@ -730,6 +730,20 @@ class LocalArchiveScreen(
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     maxLines = 2,
                                                 )
+                                                // KMK -->
+                                                if (selectedSeries.path.isNotBlank()) {
+                                                    Text(
+                                                        text = stringResource(
+                                                            KMR.strings.offline_series_folder,
+                                                            selectedSeries.path,
+                                                        ),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                }
+                                                // KMK <--
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
                                                         text = stringResource(

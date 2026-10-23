@@ -240,6 +240,7 @@
     <string name="offline_series_author">By %1$s</string>
     <string name="offline_series_about">About</string>
     <string name="offline_series_progress_percent">%1$d%% complete</string>
+    <string name="offline_series_folder">Download folder: %1$s</string>
     <!-- KMK END -->
     <string name="offline_series_continue">Continue series</string>
     <!-- KMK -->
