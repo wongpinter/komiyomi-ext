@@ -384,7 +384,9 @@ class MangaScreen(
                     // KMK <--
                 }
             }.takeIf { isHttpSource },
-            onDownloadActionClicked = screenModel::runDownloadAction.takeIf { !successState.source.isLocalOrStub() },
+            // KMK -->
+            onDownloadActionClicked = screenModel::runDownloadAction.takeIf { successState.source !is StubSource },
+            // KMK <--
             onEditCategoryClicked = screenModel::showChangeCategoryDialog.takeIf { successState.manga.favorite },
             onEditFetchIntervalClicked = screenModel::showSetFetchIntervalDialog.takeIf {
                 successState.manga.favorite

@@ -386,6 +386,17 @@ class DownloadCache(
         diskCacheFile.delete()
         renewCache()
     }
+
+    /** Refreshes the cache immediately and waits for the filesystem scan to finish. */
+    suspend fun refreshCache() {
+        val currentRenewalJob = renewalJob
+        currentRenewalJob?.cancel()
+        currentRenewalJob?.join()
+        lastRenew = 0L
+        diskCacheFile.delete()
+        renewCache(renewInterval = 0L)
+        renewalJob?.join()
+    }
     // KMK <--
 
     /**

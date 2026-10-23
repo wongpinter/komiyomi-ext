@@ -29,6 +29,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Show usernames in Tracking settings ([@MajorTanya](https://github.com/MajorTanya)) ([#3533](https://github.com/mihonapp/mihon/pull/3533))
 
 ### Fixed
+- Keep combined CBZ pages grouped in naturally ordered chapter folders and save output parts in the manga's existing Local folder.
 - Fix Shikimori tracking not working ([@MajorTanya](https://github.com/MajorTanya)) ([#3497](https://github.com/mihonapp/mihon/pull/3497))
 - Fix crash trying to select text in notes screen ([@AntsyLich](https://github.com/AntsyLich)) ([#3516](https://github.com/mihonapp/mihon/pull/3516))
 - Fix crash when putting app in background ([@AntsyLich](https://github.com/AntsyLich)) ([#3523](https://github.com/mihonapp/mihon/pull/3523))
@@ -36,6 +37,18 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix chapter's `memo` field not being updated for existing chapters ([@cuong-tran](https://github.com/cuong-tran)) ([#3538](https://github.com/mihonapp/mihon/pull/3538))
 - Fix app not reading `tachiyomix.extensionLib` extension metadata ([@AntsyLich](https://github.com/AntsyLich)) ([#3545](https://github.com/mihonapp/mihon/pull/3545), [#3559](https://github.com/mihonapp/mihon/pull/3559))
 - Fix reader navigator slider steps not updating after changing chapter ([@AntsyLich](https://github.com/AntsyLich)) ([#3549](https://github.com/mihonapp/mihon/pull/3549))
+
+## [v2.1.2] - 2026-10-22
+### Added
+- Create a combined CBZ for every available chapter from a manga’s Local details screen, with ComicInfo metadata and parts capped at 1 GB.
+- Show combined CBZ preparation, chapter, and cleanup progress in Local details and Android notifications.
+
+### Improved
+- Update combined CBZ exports with new chapters while keeping the previous archive intact until the replacement is published.
+
+### Fixed
+- Recover interrupted combined CBZ rebuilds and keep cleanup retryable so chapter archives are removed only after successful publication.
+- Handle missing chapter records during cleanup and report unsupported EPUB chapters clearly.
 
 ## [v0.20.0] - 2026-06-27
 ### Added

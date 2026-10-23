@@ -4,14 +4,13 @@ plugins {
     kotlin("plugin.serialization")
 }
 
-android {
-    namespace = "tachiyomi.core.metadata"
-
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("tachiyomi.core.metadata")
+    testInstrumentationRunner("androidx.test.runner.AndroidJUnitRunner")
+    consumerProguardFiles("consumer-rules.pro")
 }
+// KMK <--
 
 dependencies {
     implementation(projects.sourceApi)

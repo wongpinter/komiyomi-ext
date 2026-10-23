@@ -74,6 +74,7 @@ fun MangaToolbar(
     backgroundAlphaProvider: () -> Float,
     // KMK -->
     onPaletteScreenClick: () -> Unit,
+    includeDownloadOptions: Boolean = true,
     // KMK <--
     modifier: Modifier = Modifier,
 ) {
@@ -118,7 +119,7 @@ fun MangaToolbar(
                     onDismissRequest = onDismissRequest,
                     onDownloadClicked = onClickDownload,
                     // KMK -->
-                    includeCreateCbz = true,
+                    includeDownloadOptions = includeDownloadOptions,
                     // KMK <--
                 )
             }

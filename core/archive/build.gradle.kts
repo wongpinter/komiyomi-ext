@@ -4,9 +4,11 @@ plugins {
     kotlin("plugin.serialization")
 }
 
-android {
-    namespace = "mihon.core.archive"
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("mihon.core.archive")
 }
+// KMK <--
 
 dependencies {
     implementation(libs.jsoup)

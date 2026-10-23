@@ -1,6 +1,7 @@
 // KMK -->
 package eu.kanade.tachiyomi.ui.home
 
+import eu.kanade.tachiyomi.data.download.COMBINED_CBZ_OUTPUT_DIRECTORY_NAME
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import tachiyomi.source.local.io.LocalArchiveEntry
 import java.math.BigDecimal
@@ -8,6 +9,8 @@ import java.math.BigDecimal
 // KMK -->
 private val SERIES_WHITESPACE_REGEX = Regex("\\s+")
 private val CHAPTER_NUMBER_REGEX = Regex("^\\s*([+-]?\\d+(?:\\.\\d+)?)")
+private val COMBINED_CBZ_PART_NAME_REGEX = Regex("Combined Part \\d+\\.cbz", RegexOption.IGNORE_CASE)
+private val LEGACY_COMBINED_CBZ_PART_NAME_REGEX = Regex("Part \\d+\\.cbz", RegexOption.IGNORE_CASE)
 // KMK <--
 
 // KMK -->
@@ -112,6 +115,16 @@ internal fun sortOfflineChapters(
             ?: first.entry.path.compareToCaseInsensitiveNaturalOrder(second.entry.path)
     }.map { it.entry }
 }
+
+internal fun LocalArchiveEntry.isCombinedCbzPart(): Boolean =
+    !isDirectory &&
+        (
+            COMBINED_CBZ_PART_NAME_REGEX.matches(name) ||
+                (
+                    parentPath.substringAfterLast('/').equals(COMBINED_CBZ_OUTPUT_DIRECTORY_NAME, ignoreCase = true) &&
+                        LEGACY_COMBINED_CBZ_PART_NAME_REGEX.matches(name)
+                    )
+            )
 
 private data class NumberedArchiveEntry(
     val entry: LocalArchiveEntry,

@@ -5,7 +5,16 @@ plugins {
 dependencies {
     implementation(androidx.gradle)
     implementation(kotlinx.gradle)
+    // KMK -->
+    implementation(kotlinx.serialization.gradle)
+    // KMK <--
     implementation(kotlinx.compose.compiler.gradle)
+    // KMK -->
+    implementation("app.cash.sqldelight:gradle-plugin:${libs.versions.sqldelight.get()}")
+    // KMK <--
+// KMK -->
+    implementation("dev.icerock.moko:resources-generator:${libs.versions.moko.get()}")
+    // KMK <--
     implementation(libs.spotless.gradle)
     implementation(gradleApi())
 

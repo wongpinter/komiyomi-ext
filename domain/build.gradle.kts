@@ -4,20 +4,14 @@ plugins {
     kotlin("plugin.serialization")
 }
 
-android {
-    namespace = "tachiyomi.domain"
-
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("tachiyomi.domain")
+    testInstrumentationRunner("androidx.test.runner.AndroidJUnitRunner")
+    consumerProguardFiles("consumer-rules.pro")
+    compilerFreeArgs("-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi")
 }
-
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.add("-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi")
-    }
-}
+// KMK <--
 
 dependencies {
     implementation(projects.sourceApi)

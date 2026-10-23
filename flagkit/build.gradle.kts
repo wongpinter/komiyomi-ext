@@ -3,9 +3,11 @@ plugins {
     kotlin("android")
 }
 
-android {
-    namespace = "com.murgupluoglu.flagkit"
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("com.murgupluoglu.flagkit")
 }
+// KMK <--
 
 dependencies {
     implementation(projects.core.common)

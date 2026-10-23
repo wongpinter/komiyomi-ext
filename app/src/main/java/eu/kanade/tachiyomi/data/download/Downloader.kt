@@ -95,6 +95,7 @@ class Downloader(
     private val storageManager: StorageManager = Injekt.get(),
     private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
     private val getChapter: tachiyomi.domain.chapter.interactor.GetChapter = Injekt.get(),
+    private val chapterRepository: tachiyomi.domain.chapter.repository.ChapterRepository = Injekt.get(),
     // KMK <--
 ) {
 
@@ -199,7 +200,9 @@ class Downloader(
 
         isPaused = false
 
-        DownloadJob.stop(context)
+        // KMK -->
+        // DownloadJob observes the stopped downloader and completes the worker session.
+        // KMK <--
     }
 
     /**
@@ -221,6 +224,9 @@ class Downloader(
 
         internalClearQueue()
         notifier.dismissProgress()
+        // KMK -->
+        notifier.dismissCombinedCbzProgress()
+        // KMK <--
     }
 
     /**
@@ -339,9 +345,30 @@ class Downloader(
         autoStart: Boolean,
         // KMK -->
         combineCbzChapters: List<Chapter>? = null,
+        combinedCbzSeriesKey: String? = null,
+        combinedCbzSeriesTitle: String? = null,
+        combinedCbzSeriesMangaId: Long? = null,
+        combinedCbzOutputSourceId: Long? = null,
         // KMK <--
     ) {
-        val source = sourceManager.get(manga.source) as? HttpSource ?: return
+        // KMK -->
+        val resolvedSource = sourceManager.get(manga.source) ?: return
+        if (resolvedSource is tachiyomi.source.local.LocalSource) {
+            if (chapters.isNotEmpty() || combineCbzChapters.isNullOrEmpty()) return
+            val wasEmpty = queueState.value.isEmpty()
+            val added = store.addCombinedCbzRequest(
+                manga,
+                combineCbzChapters,
+                combinedCbzSeriesKey,
+                combinedCbzSeriesTitle,
+                combinedCbzSeriesMangaId,
+                combinedCbzOutputSourceId,
+            )
+            if (autoStart && wasEmpty && added) DownloadJob.start(context)
+            return
+        }
+        val source = resolvedSource as? HttpSource ?: return
+        // KMK <--
 
         // KMK -->
         if (source.id == MERGED_SOURCE_ID) return
@@ -349,7 +376,14 @@ class Downloader(
 
         // KMK -->
         if (!combineCbzChapters.isNullOrEmpty()) {
-            store.addCombinedCbzRequest(manga, combineCbzChapters)
+            store.addCombinedCbzRequest(
+                manga,
+                combineCbzChapters,
+                combinedCbzSeriesKey,
+                combinedCbzSeriesTitle,
+                combinedCbzSeriesMangaId,
+                combinedCbzOutputSourceId,
+            )
         }
         if (chapters.isEmpty() && combineCbzChapters.isNullOrEmpty()) return
         // KMK <--
@@ -873,14 +907,103 @@ class Downloader(
 
     // KMK -->
     private suspend fun processPendingCombinedCbzRequests() {
-        store.combinedCbzRequests().forEach { request ->
-            try {
-                val manga = getManga.await(request.mangaId) ?: return@forEach
-                val source = sourceManager.get(manga.source) as? HttpSource ?: return@forEach
-                val chapters = request.chapterIds.mapNotNull { getChapter.await(it) }
-                if (chapters.size != request.chapterIds.size) return@forEach
+        groupCombinedCbzRequests(store.combinedCbzRequests()).forEach { groupRequests ->
+            val chapterIds = groupRequests.flatMap { it.chapterIds }.distinct()
+            val request = groupRequests.first().copy(
+                chapterIds = chapterIds,
+                totalChapterCount = chapterIds.size,
+                completedChapterCount = 0,
+                currentChapterIndex = 0,
+            )
+            var currentChapter: Chapter? = null
+            var mangaTitle = request.seriesTitle.orEmpty()
 
-                val requestedChapterIds = request.chapterIds.toSet()
+            fun updateRequests(
+                status: CombinedCbzStatus,
+                completedChapterCount: Int = request.completedChapterCount,
+                currentChapterIndex: Int = request.currentChapterIndex,
+                currentChapter: String? = null,
+                errorMessage: String? = null,
+            ): Boolean {
+                var updated = true
+                groupRequests.forEach { groupRequest ->
+                    val requestUpdated = store.updateCombinedCbzRequest(
+                        groupRequest,
+                        status,
+                        completedChapterCount = completedChapterCount,
+                        currentChapterIndex = currentChapterIndex,
+                        currentChapter = currentChapter,
+                        errorMessage = errorMessage,
+                    )
+                    updated = requestUpdated && updated
+                }
+                return updated
+            }
+
+            try {
+                val providerMangas = groupRequests.mapNotNull { groupRequest ->
+                    getManga.await(groupRequest.mangaId)?.let { groupRequest.mangaId to it }
+                }.toMap()
+                if (providerMangas.size != groupRequests.map { it.mangaId }.distinct().size) {
+                    val message = "One or more source manga records are missing. Reopen the manga and try again."
+                    updateRequests(CombinedCbzStatus.FAILED, errorMessage = message)
+                    notifier.onCombinedCbzFailed(mangaTitle, message)
+                    return@forEach
+                }
+                val manga = request.seriesMangaId?.let { getManga.await(it) }
+                    ?: providerMangas[request.mangaId]
+                    ?: providerMangas.values.first()
+                mangaTitle = manga.title
+                val outputSourceIds = groupRequests.mapNotNull { it.outputSourceId }.distinct()
+                if (outputSourceIds.size > 1) {
+                    val message = "The combined CBZ requests refer to different output sources."
+                    updateRequests(CombinedCbzStatus.FAILED, errorMessage = message)
+                    notifier.onCombinedCbzFailed(mangaTitle, message)
+                    return@forEach
+                }
+                val source = sourceManager.get(outputSourceIds.singleOrNull() ?: manga.source)
+                if (source == null || (source !is HttpSource && source !is tachiyomi.source.local.LocalSource)) {
+                    val message = "The source required to create this combined CBZ is unavailable."
+                    updateRequests(CombinedCbzStatus.FAILED, errorMessage = message)
+                    notifier.onCombinedCbzFailed(mangaTitle, message)
+                    return@forEach
+                }
+                val chaptersByRequest = groupRequests.associateWith { groupRequest ->
+                    groupRequest.chapterIds.mapNotNull { getChapter.await(it) }
+                }
+                val missingChapters = groupRequests.any { groupRequest ->
+                    !groupRequest.outputCreated &&
+                        chaptersByRequest[groupRequest].orEmpty().size != groupRequest.chapterIds.size
+                }
+                if (missingChapters) {
+                    val message = "One or more chapter records are missing. Refresh the manga and try again."
+                    updateRequests(CombinedCbzStatus.FAILED, errorMessage = message)
+                    notifier.onCombinedCbzFailed(mangaTitle, message)
+                    return@forEach
+                }
+                val chapters = chaptersByRequest.values.flatten().distinctBy { it.id }
+                if (groupRequests.all { it.outputCreated } && (source is HttpSource || chapters.isEmpty())) {
+                    updateRequests(
+                        CombinedCbzStatus.COMPLETE,
+                        completedChapterCount = request.totalChapterCount,
+                        currentChapterIndex = 0,
+                    )
+                    notifier.onCombinedCbzComplete(mangaTitle)
+                    return@forEach
+                }
+                val chapterInputs = chapters.map { chapter ->
+                    val chapterManga = providerMangas[chapter.mangaId]
+                        ?: getManga.await(chapter.mangaId)
+                        ?: throw IOException("The manga record for chapter ${chapter.name} is missing")
+                    val chapterSource = sourceManager.get(chapterManga.source)
+                        ?: throw IOException("The source for chapter ${chapter.name} is unavailable")
+                    if (chapterSource !is HttpSource && chapterSource !is tachiyomi.source.local.LocalSource) {
+                        throw IOException("Unsupported source for combined CBZ: ${chapterSource.name}")
+                    }
+                    CombinedCbzChapterInput(chapter, chapterManga, chapterSource)
+                }
+
+                val requestedChapterIds = chapterIds.toSet()
                 if (
                     queueState.value.any {
                         it.chapter.id in requestedChapterIds &&
@@ -890,28 +1013,116 @@ class Downloader(
                     return@forEach
                 }
 
-                val allChaptersDownloaded = chapters.all { chapter ->
-                    provider.findChapterDir(
-                        chapter.name,
-                        chapter.scanlator,
-                        chapter.url,
-                        manga.ogTitle,
-                        source,
+                val allChaptersDownloaded = chapterInputs.all { input ->
+                    val chapterSource = input.source
+                    chapterSource !is HttpSource || provider.findChapterDir(
+                        input.chapter.name,
+                        input.chapter.scanlator,
+                        input.chapter.url,
+                        input.manga.ogTitle,
+                        chapterSource,
                     ) != null
                 }
                 if (!allChaptersDownloaded) return@forEach
 
-                combinedCbzCreator.create(manga, source, chapters)
-                store.removeCombinedCbzRequest(request.mangaId)
+                if (!store.updateCombinedCbzRequestGroupStatus(groupRequests, CombinedCbzStatus.COMBINING)) {
+                    return@forEach
+                }
+                if (!updateRequests(CombinedCbzStatus.COMBINING, 0, 0, null)) {
+                    throw CancellationException("Combined CBZ request was cancelled")
+                }
+                notifier.onCombinedCbzProgress(mangaTitle, request.copy(status = CombinedCbzStatus.COMBINING))
+                val creationResult = combinedCbzCreator.create(
+                    manga = manga,
+                    chapterInputs = chapterInputs,
+                    outputSource = source,
+                    outputMangaTitle = request.seriesTitle,
+                    onProgress = { currentIndex, total, chapter ->
+                        currentChapter = chapter
+                        if (!updateRequests(
+                                CombinedCbzStatus.COMBINING,
+                                completedChapterCount = if (chapter == null) total else (currentIndex - 1).coerceAtLeast(0),
+                                currentChapterIndex = if (chapter == null) 0 else currentIndex,
+                                currentChapter = chapter?.name,
+                            )
+                        ) {
+                            throw CancellationException("Combined CBZ request was cancelled")
+                        }
+                        notifier.onCombinedCbzProgress(
+                            mangaTitle,
+                            request.copy(
+                                status = CombinedCbzStatus.COMBINING,
+                                completedChapterCount = if (chapter == null) total else (currentIndex - 1).coerceAtLeast(0),
+                                currentChapterIndex = if (chapter == null) 0 else currentIndex,
+                                currentChapter = chapter?.name,
+                            ),
+                        )
+                    },
+                )
+                if (!store.markCombinedCbzRequestGroupOutputCreated(groupRequests)) {
+                    notifier.dismissCombinedCbzProgress()
+                    return@forEach
+                }
+                notifier.onCombinedCbzProgress(
+                    mangaTitle,
+                    request.copy(
+                        status = CombinedCbzStatus.CLEANING,
+                        completedChapterCount = request.totalChapterCount,
+                    ),
+                )
+                val cleanupResult = combinedCbzCreator.deleteSourceChapterArchives(creationResult.sourceChapterArchives)
+                val deletedChapterIds = (
+                    cleanupResult.deletedChapterIds +
+                        creationResult.alreadyIncludedChapterIdsWithoutFile
+                    ).distinct()
+                if (deletedChapterIds.isNotEmpty()) {
+                    chapterRepository.removeChaptersWithIds(deletedChapterIds)
+                }
+                if (cleanupResult.failedChapterIds.isNotEmpty()) {
+                    val message = context.stringResource(KMR.strings.combined_cbz_originals_not_removed)
+                    updateRequests(
+                        CombinedCbzStatus.FAILED,
+                        completedChapterCount = request.totalChapterCount,
+                        currentChapterIndex = 0,
+                        errorMessage = message,
+                    )
+                    notifier.onCombinedCbzFailed(mangaTitle, message)
+                    return@forEach
+                }
+                updateRequests(
+                    CombinedCbzStatus.COMPLETE,
+                    completedChapterCount = request.totalChapterCount,
+                    currentChapterIndex = 0,
+                )
+                notifier.onCombinedCbzComplete(mangaTitle)
+            } catch (error: CombinedCbzUnsupportedChapterException) {
+                val message = context.stringResource(KMR.strings.combined_cbz_unsupported_epub)
+                updateRequests(
+                    CombinedCbzStatus.FAILED,
+                    currentChapter = null,
+                    errorMessage = message,
+                )
+                notifier.onCombinedCbzFailed(mangaTitle, message)
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 logcat(LogPriority.ERROR, error) {
-                    "Failed to create combined CBZ for mangaId=${request.mangaId}"
+                    "Failed to create combined CBZ for requestIds=${groupRequests.joinToString { it.requestId }}"
                 }
-                notifier.onError(error.message, mangaId = request.mangaId)
+                val reason = error.message ?: error::class.simpleName ?: "Unknown error"
+                val message = currentChapter?.let { chapter ->
+                    "Failed to combine " + chapter.url + ": " + reason
+                } ?: reason
+                updateRequests(
+                    CombinedCbzStatus.FAILED,
+                    currentChapter = null,
+                    errorMessage = message,
+                )
+                notifier.onCombinedCbzFailed(mangaTitle, message)
             }
         }
     }
+
+    internal fun combinedCbzRequestsFlow() = store.combinedCbzRequestsFlow()
     // KMK <--
 
     /**
@@ -959,6 +1170,7 @@ class Downloader(
         removeFromQueueIf { it.chapter.id in chapterIds }
         // KMK -->
         store.removeCombinedCbzRequestsForChapters(chapters)
+        if (!store.hasCombinedCbzRequests()) notifier.dismissCombinedCbzProgress()
         // KMK <--
     }
 
@@ -966,6 +1178,7 @@ class Downloader(
         removeFromQueueIf { it.manga.id == manga.id }
         // KMK -->
         store.removeCombinedCbzRequest(manga.id)
+        if (!store.hasCombinedCbzRequests()) notifier.dismissCombinedCbzProgress()
         // KMK <--
     }
 

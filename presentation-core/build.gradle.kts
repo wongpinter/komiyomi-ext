@@ -4,28 +4,22 @@ plugins {
     kotlin("android")
 }
 
-android {
-    namespace = "tachiyomi.presentation.core"
-
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("tachiyomi.presentation.core")
+    testInstrumentationRunner("androidx.test.runner.AndroidJUnitRunner")
+    consumerProguardFiles("consumer-rules.pro")
+    compilerFreeArgs(
+        "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
+        "-opt-in=androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi",
+        "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+        "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
+        "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+        "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
+        "-opt-in=kotlinx.coroutines.FlowPreview",
+    )
 }
-
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.addAll(
-            "-opt-in=androidx.compose.animation.ExperimentalAnimationApi",
-            "-opt-in=androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi",
-            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
-            "-opt-in=androidx.compose.foundation.layout.ExperimentalLayoutApi",
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
-            "-opt-in=kotlinx.coroutines.FlowPreview",
-        )
-    }
-}
+// KMK <--
 
 dependencies {
     api(projects.core.common)

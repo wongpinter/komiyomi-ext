@@ -1,33 +1,16 @@
 plugins {
-    id("mihon.library")
-    kotlin("android")
-    kotlin("plugin.serialization")
-    alias(libs.plugins.sqldelight)
+    // KMK -->
+    id("mihon.data")
+    // KMK <--
 }
 
-android {
-    namespace = "tachiyomi.data"
-
-    defaultConfig {
-        consumerProguardFiles("consumer-rules.pro")
-    }
-
-    sqldelight {
-        databases {
-            create("Database") {
-                packageName.set("tachiyomi.data")
-                dialect(libs.sqldelight.dialects.sql)
-                schemaOutputDirectory.set(project.file("./src/main/sqldelight"))
-            }
-        }
-    }
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("tachiyomi.data")
+    consumerProguardFiles("consumer-rules.pro")
+    compilerOptIns("kotlinx.serialization.ExperimentalSerializationApi")
 }
-
-kotlin {
-    compilerOptions {
-        optIn.add("kotlinx.serialization.ExperimentalSerializationApi")
-    }
-}
+// KMK <--
 
 dependencies {
     implementation(projects.sourceApi)

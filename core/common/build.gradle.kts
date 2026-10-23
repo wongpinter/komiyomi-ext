@@ -5,18 +5,15 @@ plugins {
     id("com.github.ben-manes.versions")
 }
 
-android {
-    namespace = "eu.kanade.tachiyomi.core.common"
+// KMK -->
+extensions.configure<mihon.buildlogic.AndroidLibraryConfig>("komiyomiAndroid") {
+    namespace("eu.kanade.tachiyomi.core.common")
+    compilerFreeArgs(
+        "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+        "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+    )
 }
-
-kotlin {
-    compilerOptions {
-        freeCompilerArgs.addAll(
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
-        )
-    }
-}
+// KMK <--
 
 dependencies {
     implementation(projects.i18n)
