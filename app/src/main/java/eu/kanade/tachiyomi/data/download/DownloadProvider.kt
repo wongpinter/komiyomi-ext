@@ -48,20 +48,30 @@ class DownloadProvider(
     @Synchronized
     // KMK <--
     internal fun getMangaDir(mangaTitle: String, source: Source): Result<UniFile> {
-        val downloadsDir = downloadsDir
-        if (downloadsDir == null) {
+        // KMK -->
+        val rootDirectory = if (source.isLocal()) storageManager.getLocalSourceDirectory() else downloadsDir
+        if (rootDirectory == null) {
             logcat(LogPriority.ERROR) { "Failed to create download directory" }
             return Result.failure(
                 IOException(context.stringResource(MR.strings.storage_failed_to_create_download_directory)),
             )
         }
+        // KMK <--
 
-        val sourceDirName = getSourceDirName(source)
         // KMK -->
-        val sourceDir = getOrCreateDirectory(downloadsDir, sourceDirName)
+        val sourceDir = if (source.isLocal()) {
+            rootDirectory
+        } else {
+            val sourceDirName = getSourceDirName(source)
+            // KMK -->
+            getOrCreateDirectory(rootDirectory, sourceDirName)
+            // KMK <--
+        }
         // KMK <--
         if (sourceDir == null) {
-            val displayablePath = downloadsDir.displayablePath + "/$sourceDirName"
+            // KMK -->
+            val displayablePath = rootDirectory.displayablePath + "/" + getSourceDirName(source)
+            // KMK <--
             logcat(LogPriority.ERROR) { "Failed to create source download directory: $displayablePath" }
             return Result.failure(
                 IOException(context.stringResource(MR.strings.storage_failed_to_create_directory, displayablePath)),

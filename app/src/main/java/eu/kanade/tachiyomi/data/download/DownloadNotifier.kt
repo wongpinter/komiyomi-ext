@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.kmk.KMR
 import uy.kohesive.injekt.injectLazy
 import java.util.regex.Pattern
 
@@ -48,6 +49,15 @@ internal class DownloadNotifier(private val context: Context) {
             setLargeIcon(context.komiyomiExtIconBitmap())
             // KMK <--
             setAutoCancel(false)
+        }
+    }
+
+    private val combinedCbzNotificationBuilder by lazy {
+        context.notificationBuilder(Notifications.CHANNEL_DOWNLOADER_PROGRESS) {
+            setColor(ContextCompat.getColor(context, R.color.ic_launcher))
+            setLargeIcon(context.komiyomiExtIconBitmap())
+            setAutoCancel(false)
+            setOnlyAlertOnce(true)
         }
     }
 
@@ -180,6 +190,109 @@ internal class DownloadNotifier(private val context: Context) {
         // Reset states to default
         isDownloading = false
     }
+
+    // KMK -->
+    fun onCombinedCbzProgress(mangaTitle: String, request: CombinedCbzRequest) {
+        val hideContent = preferences.hideNotificationContent().get()
+        val maxProgress = request.totalChapterCount.coerceAtLeast(1)
+        val progressText = when {
+            request.status == CombinedCbzStatus.CLEANING ->
+                context.stringResource(KMR.strings.combined_cbz_notification_cleaning)
+            request.currentChapterIndex > 0 && !hideContent ->
+                context.stringResource(
+                    KMR.strings.combined_cbz_notification_progress,
+                    request.currentChapterIndex,
+                    request.totalChapterCount,
+                    request.currentChapter.orEmpty(),
+                )
+            request.currentChapterIndex > 0 ->
+                context.stringResource(
+                    KMR.strings.combined_cbz_notification_progress_hidden,
+                    request.currentChapterIndex,
+                    request.totalChapterCount,
+                )
+            else -> context.stringResource(KMR.strings.combined_cbz_notification_preparing, request.totalChapterCount)
+        }
+        with(combinedCbzNotificationBuilder) {
+            setStyle(null)
+            setContentTitle(
+                if (hideContent) {
+                    context.stringResource(KMR.strings.combined_cbz_notification_title_hidden)
+                } else {
+                    context.stringResource(KMR.strings.combined_cbz_notification_title, mangaTitle)
+                },
+            )
+            setContentText(progressText)
+            setSmallIcon(android.R.drawable.stat_sys_download)
+            setProgress(
+                maxProgress,
+                request.completedChapterCount.coerceAtMost(maxProgress),
+                request.status == CombinedCbzStatus.QUEUED ||
+                    (request.currentChapterIndex == 0 && request.completedChapterCount == 0),
+            )
+            setOngoing(true)
+            setAutoCancel(false)
+            setOnlyAlertOnce(true)
+            clearActions()
+            show(Notifications.ID_COMBINED_CBZ_PROGRESS)
+        }
+    }
+
+    fun onCombinedCbzComplete(mangaTitle: String) {
+        val hideContent = preferences.hideNotificationContent().get()
+        with(combinedCbzNotificationBuilder) {
+            setStyle(null)
+            setContentTitle(
+                if (hideContent) {
+                    context.stringResource(KMR.strings.combined_cbz_notification_title_hidden)
+                } else {
+                    context.stringResource(KMR.strings.combined_cbz_notification_title, mangaTitle)
+                },
+            )
+            setContentText(context.stringResource(KMR.strings.combined_cbz_notification_complete))
+            setSmallIcon(android.R.drawable.stat_sys_download_done)
+            setProgress(0, 0, false)
+            setOngoing(false)
+            setAutoCancel(true)
+            setOnlyAlertOnce(false)
+            clearActions()
+            show(Notifications.ID_COMBINED_CBZ_PROGRESS)
+        }
+    }
+
+    fun onCombinedCbzFailed(mangaTitle: String, errorMessage: String) {
+        val hideContent = preferences.hideNotificationContent().get()
+        with(combinedCbzNotificationBuilder) {
+            setContentTitle(
+                if (hideContent) {
+                    context.stringResource(KMR.strings.combined_cbz_notification_title_hidden)
+                } else {
+                    context.stringResource(KMR.strings.combined_cbz_notification_failed_title, mangaTitle)
+                },
+            )
+            setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    if (hideContent) {
+                        context.stringResource(KMR.strings.combined_cbz_notification_failed_hidden)
+                    } else {
+                        errorMessage
+                    },
+                ),
+            )
+            setSmallIcon(R.drawable.ic_warning_white_24dp)
+            setProgress(0, 0, false)
+            setOngoing(false)
+            setAutoCancel(true)
+            setOnlyAlertOnce(false)
+            clearActions()
+            show(Notifications.ID_COMBINED_CBZ_PROGRESS)
+        }
+    }
+
+    fun dismissCombinedCbzProgress() {
+        context.cancelNotification(Notifications.ID_COMBINED_CBZ_PROGRESS)
+    }
+    // KMK <--
 
     /**
      * Called when the downloader receives a warning.

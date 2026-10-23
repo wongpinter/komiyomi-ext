@@ -38,6 +38,10 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix reader navigator slider steps not updating after changing chapter ([@AntsyLich](https://github.com/AntsyLich)) ([#3549](https://github.com/mihonapp/mihon/pull/3549))
 
 ## [v2.1.2] - 2026-10-22
+### Added
+- Create a combined CBZ for every available chapter from a manga’s Local details screen, with ComicInfo metadata and parts capped at 1 GB.
+- Show combined CBZ preparation, chapter, and cleanup progress in Local details and Android notifications.
+
 ### Improved
 - Update combined CBZ exports with new chapters while keeping the previous archive intact until the replacement is published.
 

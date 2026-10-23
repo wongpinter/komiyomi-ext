@@ -33,6 +33,22 @@
     <string name="combined_cbz_no_downloaded_chapters">Download chapters before creating or updating a combined CBZ.</string>
     <string name="combined_cbz_originals_not_removed">Some original chapter CBZ files could not be removed.</string>
     <string name="combined_cbz_unsupported_epub">EPUB chapters can’t be included in a combined CBZ.</string>
+    <string name="combined_cbz_progress_title">Combined CBZ</string>
+    <string name="combined_cbz_progress_preparing">Preparing local chapters…</string>
+    <string name="combined_cbz_progress_queued">Waiting to combine %1$d chapters.</string>
+    <string name="combined_cbz_progress_combining">Combining chapter %1$d of %2$d: %3$s</string>
+    <string name="combined_cbz_progress_cleaning">CBZ created. Removing original chapter files…</string>
+    <string name="combined_cbz_progress_complete">Complete. Original chapter archives were removed.</string>
+    <string name="combined_cbz_progress_failed">Could not combine the chapters: %1$s</string>
+    <string name="combined_cbz_notification_title">Creating combined CBZ: %1$s</string>
+    <string name="combined_cbz_notification_title_hidden">Creating combined CBZ</string>
+    <string name="combined_cbz_notification_progress">Chapter %1$d of %2$d: %3$s</string>
+    <string name="combined_cbz_notification_progress_hidden">Chapter %1$d of %2$d</string>
+    <string name="combined_cbz_notification_cleaning">Removing original chapter files</string>
+    <string name="combined_cbz_notification_preparing">Preparing %1$d chapters</string>
+    <string name="combined_cbz_notification_complete">Combined CBZ is ready</string>
+    <string name="combined_cbz_notification_failed_title">Could not create combined CBZ: %1$s</string>
+    <string name="combined_cbz_notification_failed_hidden">Could not create combined CBZ. Open Local details for the error.</string>
     <!-- KMK END -->
         <!-- History section -->
     <string name="action_filter_unfinished_manga">Unfinished manga</string>

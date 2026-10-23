@@ -7,6 +7,7 @@ import androidx.core.net.toUri
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
+import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
@@ -77,6 +78,9 @@ class LocalArchiveScreenModel(
     private val context: Context = Injekt.get<Application>(),
     storageManager: StorageManager = Injekt.get(),
     private val xml: XML = Injekt.get(),
+    // KMK -->
+    private val downloadManager: DownloadManager = Injekt.get(),
+    // KMK <--
 ) : StateScreenModel<LocalArchiveScreenModel.State>(State()) {
     private val catalog = LocalArchiveCatalog(fileSystem)
     private val catalogCache = LocalArchiveCatalogCache(
@@ -89,6 +93,9 @@ class LocalArchiveScreenModel(
     private val coverLocks = ConcurrentHashMap<String, Mutex>()
     private var scanJob: Job? = null
     private var progressJob: Job? = null
+    // KMK -->
+    private var combinedCbzJob: Job? = null
+    // KMK <--
 
     init {
         loadCatalog(useCache = true)
@@ -108,11 +115,24 @@ class LocalArchiveScreenModel(
                     mutableState.update { it.copy(progress = progress) }
                 }
         }
+        // KMK -->
+        combinedCbzJob = screenModelScope.launch {
+            downloadManager.combinedCbzRequestsFlow()
+                .catch { xLogE("Unable to observe combined CBZ progress", it) }
+                .collect { requests ->
+                    mutableState.update { it.copy(combinedCbzRequests = requests) }
+                }
+        }
+        // KMK <--
     }
 
     fun stopObservingProgress() {
         progressJob?.cancel()
         progressJob = null
+        // KMK -->
+        combinedCbzJob?.cancel()
+        combinedCbzJob = null
+        // KMK <--
     }
 
     // KMK -->
@@ -452,6 +472,7 @@ class LocalArchiveScreenModel(
         siblingEntries: List<LocalArchiveEntry>? = null,
         seriesKey: String? = null,
         seriesTitle: String? = null,
+        onFailure: (Exception) -> Unit = {},
         onOpen: (Long, Long) -> Unit,
     ) {
         // KMK <--
@@ -550,11 +571,78 @@ class LocalArchiveScreenModel(
             } catch (e: Exception) {
                 xLogE("Unable to open ${entry.path}", e)
                 mutableState.update { it.copy(openFailed = true) }
+                // KMK -->
+                onFailure(e)
+                // KMK <--
             } finally {
                 mutableState.update { it.copy(opening = null) }
             }
         }
     }
+
+    // KMK -->
+    internal fun combineSeries(series: OfflineArchiveSeries) {
+        if (state.value.opening != null || state.value.preparingCombinedCbzSeriesKey != null) return
+        val sourceEntries = series.entries.filterNot { it.isCombinedCbzPart() }
+        if (sourceEntries.isEmpty()) return
+        mutableState.update {
+            it.copy(
+                preparingCombinedCbzSeriesKey = series.key,
+                combinedCbzPreparationError = null,
+                combinedCbzPreparationErrorSeriesKey = null,
+            )
+        }
+        open(
+            entry = sourceEntries.first(),
+            siblingEntries = sourceEntries,
+            seriesKey = series.key,
+            seriesTitle = series.title,
+            onOpen = { mangaId, _ ->
+                screenModelScope.launch {
+                    try {
+                        val manga = getManga.await(mangaId) ?: throw IOException("Local manga record could not be created")
+                        val inputPaths = sourceEntries.mapTo(hashSetOf()) { it.path }
+                        val chapters = getChapters.await(mangaId)
+                            .filter { it.url in inputPaths }
+                            .sortedBy { it.sourceOrder }
+                        val missingPath = inputPaths - chapters.map { it.url }.toSet()
+                        if (missingPath.isNotEmpty()) {
+                            throw IOException("Local chapter record is missing for " + missingPath.first())
+                        }
+                        downloadManager.downloadChapters(
+                            manga = manga,
+                            chapters = emptyList(),
+                            combineCbzChapters = chapters,
+                            combinedCbzSeriesKey = series.key,
+                            combinedCbzSeriesTitle = series.title,
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        xLogE("Unable to prepare combined CBZ for " + series.title, e)
+                        mutableState.update {
+                            it.copy(
+                                combinedCbzPreparationErrorSeriesKey = series.key,
+                                combinedCbzPreparationError = e.message ?: "Unable to prepare the local chapters",
+                            )
+                        }
+                    } finally {
+                        mutableState.update { it.copy(preparingCombinedCbzSeriesKey = null) }
+                    }
+                }
+            },
+            onFailure = { error ->
+                mutableState.update {
+                    it.copy(
+                        preparingCombinedCbzSeriesKey = null,
+                        combinedCbzPreparationErrorSeriesKey = series.key,
+                        combinedCbzPreparationError = error.message ?: "Unable to prepare the local chapters",
+                    )
+                }
+            },
+        )
+    }
+    // KMK <--
 
     data class State(
         val entries: List<LocalArchiveEntry> = emptyList(),
@@ -575,6 +663,10 @@ class LocalArchiveScreenModel(
         val lastScannedAt: Long = 0L,
         // KMK -->
         val localMangaByUrl: Map<String, tachiyomi.domain.manga.model.Manga> = emptyMap(),
+        val combinedCbzRequests: List<eu.kanade.tachiyomi.data.download.CombinedCbzRequest> = emptyList(),
+        val preparingCombinedCbzSeriesKey: String? = null,
+        val combinedCbzPreparationErrorSeriesKey: String? = null,
+        val combinedCbzPreparationError: String? = null,
         // KMK <--
         // KMK <--
     )

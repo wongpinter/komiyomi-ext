@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.core.content.edit
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
@@ -15,6 +17,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.UUID
 
 /**
  * This class is used to persist active downloads across application restarts.
@@ -80,46 +83,114 @@ class DownloadStore(
     }
 
     // KMK -->
-    fun addCombinedCbzRequest(manga: Manga, chapters: List<tachiyomi.domain.chapter.model.Chapter>) {
+    @Synchronized
+    fun addCombinedCbzRequest(
+        manga: Manga,
+        chapters: List<tachiyomi.domain.chapter.model.Chapter>,
+        seriesKey: String? = null,
+        seriesTitle: String? = null,
+    ): Boolean {
         val chapterIds = chapters.map { it.id }.distinct()
-        if (chapterIds.isEmpty()) return
+        if (chapterIds.isEmpty()) return false
 
-        val request = CombinedCbzRequestObject(manga.id, chapterIds)
+        val existing = preferences.getString(getCombinedCbzKey(manga.id), null)
+            ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
+        if (existing?.status?.isActive == true) return false
+
+        val request = CombinedCbzRequestObject(
+            mangaId = manga.id,
+            chapterIds = chapterIds,
+            requestId = UUID.randomUUID().toString(),
+            seriesKey = seriesKey,
+            seriesTitle = seriesTitle,
+            totalChapterCount = chapterIds.size,
+            currentChapterIndex = 0,
+        )
         preferences.edit {
             putString(getCombinedCbzKey(manga.id), json.encodeToString(request))
         }
+        return true
     }
 
-    internal fun combinedCbzRequests(): List<CombinedCbzRequest> = preferences.all.mapNotNull { (key, value) ->
+    fun combinedCbzRequests(): List<CombinedCbzRequest> = preferences.all.mapNotNull { (key, value) ->
         if (!key.startsWith(COMBINED_CBZ_KEY_PREFIX)) return@mapNotNull null
         val serialized = value as? String ?: return@mapNotNull null
         val request = runCatching { json.decodeFromString<CombinedCbzRequestObject>(serialized) }
             .getOrNull() ?: return@mapNotNull null
-        CombinedCbzRequest(request.mangaId, request.chapterIds.distinct(), request.outputCreated)
+        request.toCombinedCbzRequest()
+    }
+
+    fun combinedCbzRequestsFlow() = callbackFlow {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key.startsWith(COMBINED_CBZ_KEY_PREFIX)) {
+                trySend(combinedCbzRequests())
+            }
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        trySend(combinedCbzRequests())
+        awaitClose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     fun removeCombinedCbzRequest(mangaId: Long) {
         preferences.edit { remove(getCombinedCbzKey(mangaId)) }
     }
 
+    @Synchronized
     internal fun markCombinedCbzRequestOutputCreated(request: CombinedCbzRequest): Boolean {
         val key = getCombinedCbzKey(request.mangaId)
         val current = preferences.getString(key, null)
             ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
             ?: return false
-        if (current.chapterIds.distinct() != request.chapterIds) return false
+        if (current.requestId != request.requestId) return false
         preferences.edit(commit = true) {
-            putString(key, json.encodeToString(current.copy(outputCreated = true)))
+            putString(
+                key,
+                json.encodeToString(
+                    current.copy(
+                        outputCreated = true,
+                        status = CombinedCbzStatus.CLEANING,
+                        currentChapter = null,
+                        completedChapterCount = current.totalChapterCount,
+                        currentChapterIndex = 0,
+                    ),
+                ),
+            )
         }
         return true
     }
 
+    @Synchronized
+    internal fun updateCombinedCbzRequest(
+        request: CombinedCbzRequest,
+        status: CombinedCbzStatus,
+        completedChapterCount: Int = request.completedChapterCount,
+        currentChapterIndex: Int = request.currentChapterIndex,
+        currentChapter: String? = request.currentChapter,
+        errorMessage: String? = null,
+    ): Boolean {
+        val key = getCombinedCbzKey(request.mangaId)
+        val current = preferences.getString(key, null)
+            ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
+            ?: return false
+        if (current.requestId != request.requestId) return false
+        val updated = current.copy(
+            status = status,
+            completedChapterCount = completedChapterCount.coerceIn(0, current.totalChapterCount),
+            currentChapterIndex = currentChapterIndex.coerceIn(0, current.totalChapterCount),
+            currentChapter = currentChapter,
+            errorMessage = errorMessage,
+        )
+        preferences.edit { putString(key, json.encodeToString(updated)) }
+        return true
+    }
+
+    @Synchronized
     internal fun removeCombinedCbzRequest(request: CombinedCbzRequest) {
         val key = getCombinedCbzKey(request.mangaId)
         val current = preferences.getString(key, null)
             ?.let { runCatching { json.decodeFromString<CombinedCbzRequestObject>(it) }.getOrNull() }
             ?: return
-        if (current.chapterIds.distinct() == request.chapterIds) {
+        if (current.requestId == request.requestId) {
             preferences.edit { remove(key) }
         }
     }
@@ -202,7 +273,7 @@ class DownloadStore(
     }
 
     // KMK -->
-    fun hasCombinedCbzRequests() = combinedCbzRequests().isNotEmpty()
+    fun hasCombinedCbzRequests() = combinedCbzRequests().any { it.status.isActive }
 
     private companion object {
         const val COMBINED_CBZ_KEY_PREFIX = "combined_cbz_"
@@ -211,18 +282,63 @@ class DownloadStore(
 }
 
 // KMK -->
-internal data class CombinedCbzRequest(
+data class CombinedCbzRequest(
     val mangaId: Long,
     val chapterIds: List<Long>,
     val outputCreated: Boolean = false,
+    val requestId: String,
+    val seriesKey: String? = null,
+    val seriesTitle: String? = null,
+    val status: CombinedCbzStatus = CombinedCbzStatus.QUEUED,
+    val completedChapterCount: Int = 0,
+    val totalChapterCount: Int = chapterIds.size,
+    val currentChapterIndex: Int = 0,
+    val currentChapter: String? = null,
+    val errorMessage: String? = null,
 )
+
+@Serializable
+enum class CombinedCbzStatus {
+    QUEUED,
+    COMBINING,
+    CLEANING,
+    COMPLETE,
+    FAILED,
+    ;
+
+    val isActive: Boolean get() = this == QUEUED || this == COMBINING || this == CLEANING
+}
 
 @Serializable
 private data class CombinedCbzRequestObject(
     val mangaId: Long,
     val chapterIds: List<Long>,
     val outputCreated: Boolean = false,
-)
+    val requestId: String = "legacy-" + mangaId,
+    val seriesKey: String? = null,
+    val seriesTitle: String? = null,
+    val status: CombinedCbzStatus = CombinedCbzStatus.QUEUED,
+    val completedChapterCount: Int = 0,
+    val totalChapterCount: Int = chapterIds.size,
+    val currentChapterIndex: Int = 0,
+    val currentChapter: String? = null,
+    val errorMessage: String? = null,
+) {
+    fun toCombinedCbzRequest() = CombinedCbzRequest(
+        mangaId = mangaId,
+        chapterIds = chapterIds.distinct(),
+        outputCreated = outputCreated,
+        requestId = requestId,
+        seriesKey = seriesKey,
+        seriesTitle = seriesTitle,
+        status = status,
+        completedChapterCount = completedChapterCount,
+        totalChapterCount = totalChapterCount,
+        currentChapterIndex = currentChapterIndex,
+        currentChapter = currentChapter,
+        errorMessage = errorMessage,
+    )
+}
 // KMK <--
 
 /**

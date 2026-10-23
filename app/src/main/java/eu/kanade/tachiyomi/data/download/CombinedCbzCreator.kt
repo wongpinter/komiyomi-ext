@@ -34,16 +34,23 @@ private const val COMBINED_CBZ_MANIFEST_VERSION = 1
 private val COMBINED_CBZ_PART_FILE_REGEX = Regex("Part (\\d+)\\.cbz")
 private const val COMBINED_CBZ_BACKUP_DIRECTORY_NAME = ".combined-cbz-backup"
 private const val COMBINED_CBZ_STAGING_DIRECTORY_PREFIX = ".combined-cbz-staging-"
+internal const val COMBINED_CBZ_OUTPUT_DIRECTORY_NAME = "Combined CBZ"
 
 internal class CombinedCbzCreator(
     private val context: Context,
     private val provider: DownloadProvider,
     private val xml: XML,
 ) {
-    fun create(manga: Manga, source: Source, chapters: List<Chapter>): CombinedCbzCreationResult {
+    fun create(
+        manga: Manga,
+        source: Source,
+        chapters: List<Chapter>,
+        outputMangaTitle: String? = null,
+        onProgress: (Int, Int, Chapter?) -> Unit = { _, _, _ -> },
+    ): CombinedCbzCreationResult {
         val sourceChapterArchives = mutableListOf<CombinedCbzChapterArchive>()
         val alreadyIncludedChapterIdsWithoutFile = mutableListOf<Long>()
-        val mangaDirectory = provider.getMangaDir(manga.ogTitle, source).getOrElse { throw it }
+        val mangaDirectory = provider.getMangaDir(outputMangaTitle ?: manga.ogTitle, source).getOrElse { throw it }
         val outputDirectory = recoverOutputDirectory(mangaDirectory)
         val existingParts = outputDirectory?.let(::partFiles).orEmpty()
         val existingManifest = readManifest(existingParts)
@@ -92,13 +99,21 @@ internal class CombinedCbzCreator(
             CombinedCbzPartsWriter(context, stagingDirectory, encrypt, comicInfo, manifestBytes).use { writer ->
                 if (preserveExistingParts) {
                     existingParts.forEach { part ->
-                        part.archiveReader(context).use { archive ->
-                            writer.addArchivePages(archive)
+                        try {
+                            part.archiveReader(context).use { archive ->
+                                writer.addArchivePages(archive)
+                            }
+                        } catch (error: java.util.concurrent.CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
+                            val reason = error.message ?: error::class.simpleName ?: "Unknown archive error"
+                            throw IOException("Failed to read existing CBZ part " + part.uri + ": " + reason, error)
                         }
                     }
                 }
 
                 chaptersToAdd.sortedBy { it.sourceOrder }.forEach { chapter ->
+                    onProgress(chapters.indexOfFirst { it.id == chapter.id } + 1, chapters.size, chapter)
                     val chapterFile = when (source) {
                         is HttpSource -> provider.findChapterDir(
                             chapter.name,
@@ -139,6 +154,7 @@ internal class CombinedCbzCreator(
                         throw IOException("Downloaded chapter is not a file or directory: ${chapter.name}")
                     }
                 }
+                if (chaptersToAdd.isNotEmpty()) onProgress(chapters.size, chapters.size, null)
                 writer.finish()
             }
 
@@ -199,7 +215,7 @@ internal class CombinedCbzCreator(
     }
 
     private companion object {
-        const val OUTPUT_DIRECTORY_NAME = "Combined CBZ"
+        const val OUTPUT_DIRECTORY_NAME = COMBINED_CBZ_OUTPUT_DIRECTORY_NAME
     }
 
     private fun recoverOutputDirectory(mangaDirectory: UniFile): UniFile? {

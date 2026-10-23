@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.NavigateNext
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -124,6 +125,7 @@ class LocalArchiveScreen(
         // KMK -->
         var searchVisible by rememberSaveable { mutableStateOf(false) }
         var selectedSeriesKey by rememberSaveable(seriesKey) { mutableStateOf(seriesKey) }
+        var selectedSeriesTitle by rememberSaveable(seriesKey) { mutableStateOf<String?>(null) }
         var returnQuery by rememberSaveable(seriesKey) { mutableStateOf<String?>(null) }
         var returnSearchVisible by rememberSaveable(seriesKey) { mutableStateOf(false) }
         var showMetadataSearchDialog by rememberSaveable { mutableStateOf(false) }
@@ -134,6 +136,7 @@ class LocalArchiveScreen(
         }
         fun closeSeriesDetails() {
             selectedSeriesKey = null
+            selectedSeriesTitle = null
             query = returnQuery.orEmpty()
             searchVisible = returnSearchVisible
             returnQuery = null
@@ -261,8 +264,38 @@ class LocalArchiveScreen(
             }
         }
         val selectedSeries = remember(allSeries, selectedSeriesKey) { allSeries.firstOrNull { it.key == selectedSeriesKey } }
+        LaunchedEffect(selectedSeries?.key) {
+            selectedSeries?.let { selectedSeriesTitle = it.title }
+        }
+        LaunchedEffect(state.revision, state.scanning, state.loadingCache, selectedSeriesKey, selectedSeriesTitle) {
+            if (!state.scanning && !state.loadingCache && selectedSeriesKey != null && selectedSeries == null) {
+                allSeries.firstOrNull { it.title.equals(selectedSeriesTitle, ignoreCase = true) }
+                    ?.let { selectedSeriesKey = it.key }
+            }
+        }
         val selectedSeriesManga = selectedSeries?.let { item ->
             offlineMangaUrl(item.entries, item.key)?.let(state.localMangaByUrl::get)
+        }
+        val combinedCbzRequest = selectedSeries?.let { currentSeries ->
+            state.combinedCbzRequests.lastOrNull { request ->
+                request.seriesKey == currentSeries.key ||
+                    (request.seriesKey == null && request.mangaId == selectedSeriesManga?.id)
+            } ?: state.combinedCbzRequests.lastOrNull { request ->
+                !request.status.isActive && request.seriesTitle.equals(currentSeries.title, ignoreCase = true)
+            }
+        }
+        val combinedCbzInputCount = selectedSeries?.entries?.count { !it.isCombinedCbzPart() } ?: 0
+        val combinedCbzPreparationError = state.combinedCbzPreparationError
+            .takeIf { state.combinedCbzPreparationErrorSeriesKey == selectedSeries?.key }
+        var refreshedCombinedCbzRequestId by rememberSaveable { mutableStateOf<String?>(null) }
+        LaunchedEffect(combinedCbzRequest?.requestId, combinedCbzRequest?.status) {
+            if (
+                combinedCbzRequest?.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.COMPLETE &&
+                refreshedCombinedCbzRequestId != combinedCbzRequest.requestId
+            ) {
+                refreshedCombinedCbzRequestId = combinedCbzRequest.requestId
+                model.refresh()
+            }
         }
         val filteredIdentities = remember(filtered) { filtered.mapTo(hashSetOf()) { it.identity } }
         val visibleEntries = if (showSeriesDetails) {
@@ -328,6 +361,7 @@ class LocalArchiveScreen(
         val openSeries: (OfflineArchiveSeries) -> Unit = { item ->
             returnQuery = query
             returnSearchVisible = searchVisible
+            selectedSeriesTitle = item.title
             query = ""
             searchVisible = false
             selectedSeriesKey = item.key
@@ -402,6 +436,18 @@ class LocalArchiveScreen(
                                 Icon(
                                     imageVector = Icons.Outlined.TravelExplore,
                                     contentDescription = stringResource(KMR.strings.action_search_metadata_from_extensions),
+                                )
+                            }
+                            IconButton(
+                                onClick = { model.combineSeries(selectedSeries) },
+                                enabled = state.opening == null &&
+                                    state.preparingCombinedCbzSeriesKey == null &&
+                                    combinedCbzRequest?.status?.isActive != true &&
+                                    combinedCbzInputCount > 0,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Archive,
+                                    contentDescription = stringResource(KMR.strings.create_combined_cbz),
                                 )
                             }
                         }
@@ -716,6 +762,19 @@ class LocalArchiveScreen(
                                     }
                                 }
                             }
+                            if (
+                                state.preparingCombinedCbzSeriesKey == selectedSeries.key ||
+                                combinedCbzRequest != null ||
+                                combinedCbzPreparationError != null
+                            ) {
+                                item(key = "combined-cbz-progress") {
+                                    CombinedCbzProgressCard(
+                                        request = combinedCbzRequest,
+                                        preparing = state.preparingCombinedCbzSeriesKey == selectedSeries.key,
+                                        preparationError = combinedCbzPreparationError,
+                                    )
+                                }
+                            }
                         }
                         // KMK <--
                         if (showSeries && continuing.isNotEmpty()) {
@@ -912,6 +971,85 @@ class LocalArchiveScreen(
 }
 
 // KMK -->
+@Composable
+private fun CombinedCbzProgressCard(
+    request: eu.kanade.tachiyomi.data.download.CombinedCbzRequest?,
+    preparing: Boolean,
+    preparationError: String?,
+) {
+    if (!preparing && request == null && preparationError == null) return
+
+    val message = when {
+        preparationError != null -> stringResource(KMR.strings.combined_cbz_progress_failed, preparationError)
+        preparing -> stringResource(KMR.strings.combined_cbz_progress_preparing)
+        request == null -> return
+        request.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.QUEUED ->
+            stringResource(KMR.strings.combined_cbz_progress_queued, request.totalChapterCount)
+        request.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.COMBINING &&
+            request.currentChapterIndex > 0 ->
+            stringResource(
+                KMR.strings.combined_cbz_progress_combining,
+                request.currentChapterIndex,
+                request.totalChapterCount,
+                request.currentChapter.orEmpty(),
+            )
+        request.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.COMBINING ->
+            stringResource(KMR.strings.combined_cbz_progress_preparing)
+        request.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.CLEANING ->
+            stringResource(KMR.strings.combined_cbz_progress_cleaning)
+        request.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.COMPLETE ->
+            stringResource(KMR.strings.combined_cbz_progress_complete)
+        else -> stringResource(
+            KMR.strings.combined_cbz_progress_failed,
+            request.errorMessage.orEmpty(),
+        )
+    }
+    val active = preparing || request?.status?.isActive == true
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(KMR.strings.combined_cbz_progress_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (preparationError != null || request?.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.FAILED) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            if (active) {
+                val total = request?.totalChapterCount ?: 0
+                if (
+                    request?.status == eu.kanade.tachiyomi.data.download.CombinedCbzStatus.COMBINING &&
+                    request.currentChapterIndex > 0 &&
+                    total > 0
+                ) {
+                    LinearProgressIndicator(
+                        progress = {
+                            request.completedChapterCount.toFloat().div(total).coerceIn(0f, 1f)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
 private data class OfflineSeriesProgressSummary(
     val completed: Int,
     val reading: Int,

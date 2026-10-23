@@ -141,12 +141,25 @@ class DownloadManager(
         autoStart: Boolean = true,
         // KMK -->
         combineCbzChapters: List<Chapter>? = null,
+        combinedCbzSeriesKey: String? = null,
+        combinedCbzSeriesTitle: String? = null,
         // KMK <--
     ) {
         // KMK -->
-        downloader.queueChapters(manga, chapters, autoStart, combineCbzChapters)
+        downloader.queueChapters(
+            manga,
+            chapters,
+            autoStart,
+            combineCbzChapters,
+            combinedCbzSeriesKey,
+            combinedCbzSeriesTitle,
+        )
         // KMK <--
     }
+
+    // KMK -->
+    internal fun combinedCbzRequestsFlow() = downloader.combinedCbzRequestsFlow()
+    // KMK <--
 
     /**
      * Tells the downloader to enqueue the given list of downloads at the start of the queue.
